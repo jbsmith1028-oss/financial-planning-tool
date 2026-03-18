@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>UBS | Alpha Partners — Financial Planning Suite</title>
-  <meta name="description" content="A structured tool for budgeting, per-account investment growth, debt strategy, tax optimization, and 30-year wealth projection." />
+  <meta name="description" content="A comprehensive financial planning suite for budgeting, growth modeling, debt strategy, tax optimization, and long-term investment and net worth projections." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%23c9a84c'/></svg>" />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
@@ -172,6 +172,9 @@ function App() {
   const [taxRate, setTaxRate] = useState(20);
   const [k401pct, setK401pct] = useState("");
   const [matchPct, setMatchPct] = useState("");
+  const [healthIns, setHealthIns] = useState("");
+  const [tradIRAContrib, setTradIRAContrib] = useState("");
+  const [brokContrib, setBrokContrib] = useState("");
 
   // Expenses
   const [rent, setRent] = useState("");
@@ -189,7 +192,7 @@ function App() {
   const [otherWants, setOtherWants] = useState("");
 
   // Debt
-  const [debts, setDebts] = useState([{ name: "Student Loans", balance: "", rate: 5.5, minPayment: "" }]);
+  const [debts, setDebts] = useState([]);
   const [debtStrat, setDebtStrat] = useState("avalanche");
 
   // Assets
@@ -200,12 +203,13 @@ function App() {
   const [balTradIRA, setBalTradIRA] = useState("");
   const [balRothIRA, setBalRothIRA] = useState("");
   const [balBrok, setBalBrok] = useState("");
+  const [realEstate, setRealEstate] = useState("");
   const [otherAssets, setOtherAssets] = useState("");
 
   // Goals
   const [eMons, setEMons] = useState(6);
   const [retAge, setRetAge] = useState(65);
-  const [curAge, setCurAge] = useState("");
+  const [curAge, setCurAge] = useState(30);
   const [expRet, setExpRet] = useState(7);
 
   // Savings Goals
@@ -228,11 +232,72 @@ function App() {
 
   const nav = (t) => { setAnim(true); setTimeout(() => { setStep(t); setAnim(false); window.scrollTo(0, 0); }, 230); };
 
+  const [saveStatus, setSaveStatus] = useState("");
+  const SAVE_KEY = "ubs_alpha_financial_plan";
+
+  const getState = () => ({
+    salary, otherInc, taxRate, k401pct, matchPct, healthIns, tradIRAContrib, brokContrib,
+    rent, utils, groc, trans, ins, minDebt, otherNeeds,
+    dining, ent, shop, subs, trav, otherWants,
+    debts, debtStrat,
+    checking, savings, hysaRate, bal401k, balTradIRA, balRothIRA, balBrok, realEstate, otherAssets,
+    eMons, retAge, curAge, expRet, sGoals,
+    hasHSA, hsaContrib, hsaType, hsaRecurring, hasRoth, rothContrib, rothRecurring, rothCatchup, filingStatus,
+    wiSavBoost, wiRetBoost, step,
+  });
+
+  const loadState = (s) => {
+    if (!s) return;
+    setSalary(s.salary ?? ""); setOtherInc(s.otherInc ?? ""); setTaxRate(s.taxRate ?? 20);
+    setK401pct(s.k401pct ?? ""); setMatchPct(s.matchPct ?? ""); setHealthIns(s.healthIns ?? "");
+    setTradIRAContrib(s.tradIRAContrib ?? ""); setBrokContrib(s.brokContrib ?? "");
+    setRent(s.rent ?? ""); setUtils(s.utils ?? ""); setGroc(s.groc ?? "");
+    setTrans(s.trans ?? ""); setIns(s.ins ?? ""); setMinDebt(s.minDebt ?? "");
+    setOtherNeeds(s.otherNeeds ?? ""); setDining(s.dining ?? ""); setEnt(s.ent ?? "");
+    setShop(s.shop ?? ""); setSubs(s.subs ?? ""); setTrav(s.trav ?? "");
+    setOtherWants(s.otherWants ?? ""); setDebts(s.debts ?? []); setDebtStrat(s.debtStrat ?? "avalanche");
+    setChecking(s.checking ?? ""); setSavings(s.savings ?? ""); setHysaRate(s.hysaRate ?? 3.75);
+    setBal401k(s.bal401k ?? ""); setBalTradIRA(s.balTradIRA ?? ""); setBalRothIRA(s.balRothIRA ?? "");
+    setBalBrok(s.balBrok ?? ""); setRealEstate(s.realEstate ?? ""); setOtherAssets(s.otherAssets ?? "");
+    setEMons(s.eMons ?? 6); setRetAge(s.retAge ?? 65); setCurAge(s.curAge ?? 30); setExpRet(s.expRet ?? 7);
+    setSGoals(s.sGoals ?? []);
+    setHasHSA(s.hasHSA ?? "yes"); setHsaContrib(s.hsaContrib ?? ""); setHsaType(s.hsaType ?? "individual");
+    setHsaRecurring(s.hsaRecurring ?? "recurring"); setHasRoth(s.hasRoth ?? "yes");
+    setRothContrib(s.rothContrib ?? ""); setRothRecurring(s.rothRecurring ?? "recurring");
+    setRothCatchup(s.rothCatchup ?? "no"); setFilingStatus(s.filingStatus ?? "single");
+    setWiSavBoost(s.wiSavBoost ?? 5); setWiRetBoost(s.wiRetBoost ?? 1);
+    if (s.step > 0) setStep(s.step);
+  };
+
+  const handleSave = () => {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(getState()));
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus(""), 2500);
+    } catch (e) { setSaveStatus("error"); setTimeout(() => setSaveStatus(""), 3000); }
+  };
+
+  const handleClear = () => {
+    if (confirm("Clear all saved data? This cannot be undone.")) {
+      localStorage.removeItem(SAVE_KEY);
+      setSaveStatus("cleared");
+      setTimeout(() => setSaveStatus(""), 2500);
+    }
+  };
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SAVE_KEY);
+      if (saved) loadState(JSON.parse(saved));
+    } catch (e) {}
+  }, []);
+
   const calc = useMemo(() => {
     const grossM = ((Number(salary) || 0) + (Number(otherInc) || 0)) / 12;
     const c401k = grossM * ((Number(k401pct) || 0) / 100);
     const match = grossM * (Math.min(Number(matchPct) || 0, Number(k401pct) || 0) / 100);
-    const taxable = grossM - c401k;
+    const hInsM = Number(healthIns) || 0;
+    const taxable = grossM - c401k - hInsM;
     const tr = Number(taxRate) || 0;
     const taxes = taxable * (tr / 100);
     const net = taxable - taxes;
@@ -247,7 +312,7 @@ function App() {
     const totalDebt = debts.reduce((s, d) => s + (Number(d.balance) || 0), 0);
     const liquidTotal = (Number(checking) || 0) + (Number(savings) || 0);
     const investTotal = (Number(bal401k) || 0) + (Number(balTradIRA) || 0) + (Number(balRothIRA) || 0) + (Number(balBrok) || 0);
-    const totalAssets = liquidTotal + investTotal + (Number(otherAssets) || 0);
+    const totalAssets = liquidTotal + investTotal + (Number(realEstate) || 0) + (Number(otherAssets) || 0);
     const netWorth = totalAssets - totalDebt;
 
     const eFund = needs * eMons;
@@ -271,7 +336,8 @@ function App() {
     }
 
     const r = Number(expRet) || 7;
-    const yrs = Math.max(1, retAge - curAge);
+    const parsedAge = Number(curAge) || 0;
+    const yrs = parsedAge > 0 ? Math.max(1, retAge - parsedAge) : Math.max(1, retAge - 30);
     const retMo = c401k + match;
     const ltcgRate = tr >= 32 ? 20 : 15;
     const brokerageDrag = 0.30 * (ltcgRate / 100) * r;
@@ -279,14 +345,41 @@ function App() {
     const pretaxRate = r;
     const rothRate = r;
 
+    // Tax optimizer — 2026 limits (IRS Rev. Proc. 2025-19 for HSA; IR-2025-111 for IRA)
+    const hsaLimit = hsaType === "family" ? 8750 : 4400;
+    const catchupAdd = (rothCatchup === "yes") ? 1100 : 0;
+    const rothLimit = 7500 + catchupAdd; // 2026: $7,500 base, $8,600 with 50+ catch-up
+    const phaseout = filingStatus === "mfj" ? { s: 242000, e: 252000 } : { s: 153000, e: 168000 };
+    const annInc = (Number(salary) || 0) + (Number(otherInc) || 0);
+    const rothElig = annInc < phaseout.e;
+    const rothMax = !rothElig ? 0
+      : annInc <= phaseout.s ? rothLimit
+      : Math.max(0, Math.round(rothLimit * (1 - (annInc - phaseout.s) / (phaseout.e - phaseout.s))));
+    const hsaRem = Math.max(0, hsaLimit - (Number(hsaContrib) || 0));
+    const rothRem = Math.max(0, rothMax - (Number(rothContrib) || 0));
+
+    // Per-account projections with tax-correct growth
     const pts401k = projectAccount(bal401k, retMo, pretaxRate, 0, yrs);
-    const ptsTradIRA = projectAccount(balTradIRA, 0, pretaxRate, 0, yrs);
-    const ptsRothIRA = projectAccount(balRothIRA, 0, rothRate, 0, yrs);
-    const ptsBrok = projectAccount(balBrok, 0, r, brokerageDrag, yrs);
+
+    // Traditional IRA: annual contribution / 12
+    const tradIRAMo = (Number(tradIRAContrib) || 0) / 12;
+    const ptsTradIRA = projectAccount(balTradIRA, tradIRAMo, pretaxRate, 0, yrs);
+
+    // Roth IRA: wire in contributions from Tax Optimizer
+    const rothAnnualContrib = (hasRoth === "yes" && rothElig) ? Math.min(Number(rothContrib) || 0, rothMax) : 0;
+    const rothMonthly = rothRecurring === "recurring" ? rothAnnualContrib / 12 : 0;
+    const rothStartBal = rothRecurring === "onetime"
+      ? (Number(balRothIRA) || 0) + rothAnnualContrib
+      : (Number(balRothIRA) || 0);
+    const ptsRothIRA = projectAccount(rothStartBal, rothMonthly, rothRate, 0, yrs);
+
+    // Brokerage: monthly contribution
+    const brokMo = Number(brokContrib) || 0;
+    const ptsBrok = projectAccount(balBrok, brokMo, r, brokerageDrag, yrs);
     const ptsSavings = projectAccount(savings, 0, hysaEffective, 0, yrs);
 
     const acctProj = pts401k.map((p, i) => ({
-      year: curAge + p.year,
+      year: parsedAge + p.year,
       "401k": p.balance,
       "Trad IRA": ptsTradIRA[i]?.balance || 0,
       "Roth IRA": ptsRothIRA[i]?.balance || 0,
@@ -303,15 +396,24 @@ function App() {
     const retFinalTotal = retFinal401k + retFinalTrad + retFinalRoth + retFinalBrok + retFinalHYSA;
 
     const nwProj = [];
-    let nwBase = netWorth, nwWi = netWorth;
+    const reVal = Number(realEstate) || 0;
+    const nwExRe = netWorth - reVal; // net worth excluding real estate
+    let nwBase = nwExRe, nwWi = nwExRe;
+    let reBase = reVal, reWi = reVal;
     const mr = r / 100 / 12;
     const wiMr = (r + wiRetBoost) / 100 / 12;
-    const mSavBase = Math.max(0, surplus) * 0.4;
-    const mSavWi = Math.max(0, surplus + net * (wiSavBoost / 100)) * 0.4;
-    for (let m = 0; m <= 360; m++) {
-      if (m % 12 === 0) nwProj.push({ year: curAge + m / 12, base: Math.round(nwBase), whatif: Math.round(nwWi) });
+    const reMr = 2 / 100 / 12; // 2% annual appreciation for real estate
+    // Include explicit investment contributions alongside surplus-based savings
+    const explicitContribs = retMo + tradIRAMo + rothMonthly + brokMo;
+    const mSavBase = Math.max(0, surplus) * 0.4 + explicitContribs;
+    const mSavWi = Math.max(0, surplus + net * (wiSavBoost / 100)) * 0.4 + explicitContribs;
+    const nwMonths = yrs * 12;
+    for (let m = 0; m <= nwMonths; m++) {
+      if (m % 12 === 0) nwProj.push({ year: parsedAge + m / 12, base: Math.round(nwBase + reBase), whatif: Math.round(nwWi + reWi) });
       nwBase = nwBase * (1 + mr) + mSavBase;
       nwWi = nwWi * (1 + wiMr) + mSavWi;
+      reBase = reBase * (1 + reMr);
+      reWi = reWi * (1 + reMr);
     }
 
     const totPri = sGoals.reduce((s, g) => s + (Number(g.priority) || 1), 0);
@@ -326,19 +428,6 @@ function App() {
       }
       return { ...g, alloc, pts, reached, color: GOAL_COLORS[i % GOAL_COLORS.length] };
     });
-
-    // Tax optimizer — 2026 limits (IRS Rev. Proc. 2025-19 for HSA; IR-2025-111 for IRA)
-    const hsaLimit = hsaType === "family" ? 8750 : 4400;
-    const catchupAdd = (rothCatchup === "yes") ? 1100 : 0;
-    const rothLimit = 7500 + catchupAdd; // 2026: $7,500 base, $8,600 with 50+ catch-up
-    const phaseout = filingStatus === "mfj" ? { s: 242000, e: 252000 } : { s: 153000, e: 168000 };
-    const annInc = (Number(salary) || 0) + (Number(otherInc) || 0);
-    const rothElig = annInc < phaseout.e;
-    const rothMax = !rothElig ? 0
-      : annInc <= phaseout.s ? rothLimit
-      : Math.max(0, Math.round(rothLimit * (1 - (annInc - phaseout.s) / (phaseout.e - phaseout.s))));
-    const hsaRem = Math.max(0, hsaLimit - (Number(hsaContrib) || 0));
-    const rothRem = Math.max(0, rothMax - (Number(rothContrib) || 0));
 
     const hsaTaxSav = hsaRecurring === "recurring"
       ? hsaRem * (tr / 100) * yrs
@@ -377,7 +466,7 @@ function App() {
     ];
 
     return {
-      grossM, net, c401k, match, taxes, needs, wants, surplus, needsPct, wantsPct, savPct,
+      grossM, net, c401k, match, hInsM, taxes, needs, wants, surplus, needsPct, wantsPct, savPct,
       totalDebt, totalAssets, liquidTotal, investTotal, netWorth, eFund, eProg,
       sorted, payoffMo, extraDebt,
       acctProj, retFinal401k, retFinalTrad, retFinalRoth, retFinalBrok, retFinalHYSA, retFinalTotal,
@@ -386,24 +475,25 @@ function App() {
       hsaLimit, rothMax, rothElig, hsaRem, rothRem, hsaTaxSav, rothF30,
       benchmarks, sf, score, seqAccts, taxRate: tr,
     };
-  }, [salary, otherInc, taxRate, k401pct, matchPct,
+  }, [salary, otherInc, taxRate, k401pct, matchPct, healthIns, tradIRAContrib, brokContrib,
     rent, utils, groc, trans, ins, minDebt, otherNeeds,
     dining, ent, shop, subs, trav, otherWants,
     debts, debtStrat,
-    checking, savings, hysaRate, bal401k, balTradIRA, balRothIRA, balBrok, otherAssets,
+    checking, savings, hysaRate, bal401k, balTradIRA, balRothIRA, balBrok, realEstate, otherAssets,
     eMons, retAge, curAge, expRet, sGoals,
     hasHSA, hsaContrib, hsaType, hsaRecurring, hasRoth, rothContrib, rothRecurring, rothCatchup, filingStatus,
     wiSavBoost, wiRetBoost]);
 
   const sp = {
-    salary, setSalary, otherInc, setOtherInc, taxRate, setTaxRate, k401pct, setK401pct, matchPct, setMatchPct,
+    salary, setSalary, otherInc, setOtherInc, taxRate, setTaxRate, k401pct, setK401pct, matchPct, setMatchPct, healthIns, setHealthIns,
+    tradIRAContrib, setTradIRAContrib, brokContrib, setBrokContrib,
     rent, setRent, utils, setUtils, groc, setGroc, trans, setTrans, ins, setIns,
     minDebt, setMinDebt, otherNeeds, setOtherNeeds,
     dining, setDining, ent, setEnt, shop, setShop, subs, setSubs, trav, setTrav, otherWants, setOtherWants,
     debts, setDebts, debtStrat, setDebtStrat,
     checking, setChecking, savings, setSavings, hysaRate, setHysaRate,
     bal401k, setBal401k, balTradIRA, setBalTradIRA, balRothIRA, setBalRothIRA, balBrok, setBalBrok,
-    otherAssets, setOtherAssets,
+    realEstate, setRealEstate, otherAssets, setOtherAssets,
     eMons, setEMons, retAge, setRetAge, curAge, setCurAge, expRet, setExpRet,
     sGoals, setSGoals,
     hasHSA, setHasHSA, hsaContrib, setHsaContrib, hsaType, setHsaType, hsaRecurring, setHsaRecurring,
@@ -446,7 +536,26 @@ function App() {
           <div style={{ width: 7, height: 7, background: C.gold, borderRadius: "50%", boxShadow: `0 0 10px ${C.goldDim}` }} />
           <span style={{ fontFamily: FMO, fontSize: mob ? 10 : 11, letterSpacing: 2.5, color: C.gold, textTransform: "uppercase" }}>UBS | Alpha Partners</span>
         </div>
-        {!mob && <span style={{ fontFamily: FMO, fontSize: 10, color: C.dim }}>Financial Planning Suite</span>}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {saveStatus && (
+            <span style={{ fontFamily: FMO, fontSize: 10, color: saveStatus === "error" ? C.red : C.green, transition: "opacity 0.3s" }}>
+              {saveStatus === "saved" ? "✓ Saved" : saveStatus === "cleared" ? "✓ Cleared" : "✗ Error"}
+            </span>
+          )}
+          {step > 0 && (
+            <>
+              <button onClick={handleSave} style={{
+                background: "transparent", border: `1px solid ${C.goldDim}`, borderRadius: 6, padding: mob ? "5px 10px" : "5px 14px",
+                fontFamily: FMO, fontSize: 9, color: C.gold, cursor: "pointer", letterSpacing: 1, textTransform: "uppercase",
+              }}>Save</button>
+              <button onClick={handleClear} style={{
+                background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6, padding: mob ? "5px 10px" : "5px 14px",
+                fontFamily: FMO, fontSize: 9, color: C.dim, cursor: "pointer", letterSpacing: 1, textTransform: "uppercase",
+              }}>Clear</button>
+            </>
+          )}
+          {!mob && step === 0 && <span style={{ fontFamily: FMO, fontSize: 10, color: C.dim }}>Financial Planning Suite</span>}
+        </div>
       </header>
 
       {step > 0 && (
@@ -521,7 +630,7 @@ function Welcome({ onStart, mob }) {
         Your Financial<br /><span style={{ color: C.gold }}>Blueprint</span>
       </h1>
       <p style={{ fontFamily: FM, fontSize: 14, color: C.dim, lineHeight: 1.7, margin: "14px 0 32px", fontWeight: 300 }}>
-        A structured tool for budgeting, per-account investment growth, debt strategy, tax optimization, and 30-year wealth projection.
+        A comprehensive planning suite for budgeting, growth modeling, debt strategy, tax optimization, and long-term investment asset and net worth projections.
       </p>
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "repeat(3,1fr)", gap: 10, marginBottom: 32 }}>
         {[
@@ -542,7 +651,7 @@ function Welcome({ onStart, mob }) {
 }
 
 // ── Income ────────────────────────────────────────────────────────────
-function IncomeStep({ salary, setSalary, otherInc, setOtherInc, taxRate, setTaxRate, k401pct, setK401pct, matchPct, setMatchPct, calc, mob }) {
+function IncomeStep({ salary, setSalary, otherInc, setOtherInc, taxRate, setTaxRate, k401pct, setK401pct, matchPct, setMatchPct, healthIns, setHealthIns, bal401k, setBal401k, calc, mob }) {
   return (
     <div>
       <h2 style={{ fontFamily: FD, fontSize: mob ? 20 : 24, color: C.text, marginBottom: 18 }}>Income & Tax Details</h2>
@@ -555,6 +664,7 @@ function IncomeStep({ salary, setSalary, otherInc, setOtherInc, taxRate, setTaxR
         </Card>
         <Card>
           <Lbl>401(k) / Retirement</Lbl><div style={{ marginBottom: 10 }} />
+          <Field label="Current 401(k) Balance" prefix="$" value={bal401k} onChange={setBal401k} placeholder="0" />
           <Field label="Your Contribution" value={k401pct} onChange={setK401pct} suffix="% of salary" placeholder="0" />
           <Field label="Employer Match" value={matchPct} onChange={setMatchPct} suffix="%" placeholder="0" />
           <Rule />
@@ -565,9 +675,19 @@ function IncomeStep({ salary, setSalary, otherInc, setOtherInc, taxRate, setTaxR
         </Card>
       </div>
       <Card style={{ marginTop: 14 }}>
-        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 8 }}>
+        <Lbl>Employer Health Insurance</Lbl><div style={{ marginBottom: 10 }} />
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 14, alignItems: "end" }}>
+          <Field label="Monthly Premium (Pre-Tax)" prefix="$" value={healthIns} onChange={setHealthIns} placeholder="0" />
+          <div style={{ fontSize: 10, fontFamily: FM, color: C.dim, lineHeight: 1.6, paddingBottom: 16 }}>
+            Pre-tax premium deducted from gross pay before taxes. Reduces taxable income.
+          </div>
+        </div>
+      </Card>
+      <Card style={{ marginTop: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(5,1fr)", gap: 8 }}>
           <Metric label="Gross Monthly" value={fmt$(calc.grossM)} />
           <Metric label="401k Deduction" value={fmt$(calc.c401k)} color={C.blue} />
+          <Metric label="Health Ins." value={fmt$(calc.hInsM)} color={C.teal} />
           <Metric label="Est. Taxes" value={fmt$(calc.taxes)} color={C.red} />
           <Metric label="Net Monthly" value={fmt$(calc.net)} color={C.green} />
         </div>
@@ -589,7 +709,7 @@ function ExpensesStep(p) {
           <Field label="Utilities" prefix="$" value={p.utils} onChange={p.setUtils} placeholder="0" />
           <Field label="Groceries" prefix="$" value={p.groc} onChange={p.setGroc} placeholder="0" />
           <Field label="Transportation" prefix="$" value={p.trans} onChange={p.setTrans} placeholder="0" />
-          <Field label="Insurance" prefix="$" value={p.ins} onChange={p.setIns} placeholder="0" />
+          <Field label="Car Insurance" prefix="$" value={p.ins} onChange={p.setIns} placeholder="0" />
           <Field label="Min Debt Payments" prefix="$" value={p.minDebt} onChange={p.setMinDebt} placeholder="0" />
           <Field label="Other Essentials" prefix="$" value={p.otherNeeds} onChange={p.setOtherNeeds} placeholder="0" />
         </Card>
@@ -617,7 +737,7 @@ function ExpensesStep(p) {
 
 // ── Debt ──────────────────────────────────────────────────────────────
 function DebtStep({ debts, setDebts, debtStrat, setDebtStrat, mob }) {
-  const add = () => setDebts([...debts, { name: "", balance: 0, rate: 0, minPayment: 0 }]);
+  const add = () => setDebts([...debts, { name: "", balance: "", rate: "", minPayment: "" }]);
   const upd = (i, f, v) => { const d = [...debts]; d[i] = { ...d[i], [f]: v }; setDebts(d); };
   const rem = (i) => setDebts(debts.filter((_, j) => j !== i));
   return (
@@ -625,6 +745,16 @@ function DebtStep({ debts, setDebts, debtStrat, setDebtStrat, mob }) {
       <h2 style={{ fontFamily: FD, fontSize: mob ? 20 : 24, color: C.text, marginBottom: 18 }}>Debt Inventory</h2>
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "2fr 1fr", gap: 14 }}>
         <div>
+          {debts.length === 0 && (
+            <Card style={{ textAlign: "center", padding: 36, marginBottom: 11 }}>
+              <div style={{ fontSize: 32, opacity: 0.3, marginBottom: 10 }}>✓</div>
+              <div style={{ fontFamily: FD, fontSize: 17, color: C.dim, marginBottom: 7 }}>No debts entered</div>
+              <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.6, maxWidth: 280, margin: "0 auto 18px" }}>
+                Add any debts such as a mortgage, student loans, auto loans, or credit cards to model payoff strategy.
+              </div>
+              <Btn onClick={add}>+ Add Your First Debt</Btn>
+            </Card>
+          )}
           {debts.map((d, i) => (
             <Card key={i} style={{ marginBottom: 11 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9 }}>
@@ -634,12 +764,12 @@ function DebtStep({ debts, setDebts, debtStrat, setDebtStrat, mob }) {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                 <Field label="Balance" prefix="$" value={d.balance} onChange={v => upd(i, "balance", v)} placeholder="0" />
-                <Field label="APR" value={d.rate} onChange={v => upd(i, "rate", v)} suffix="%" />
+                <Field label="APR" value={d.rate} onChange={v => upd(i, "rate", v)} suffix="%" placeholder="0" />
                 <Field label="Min Payment" prefix="$" value={d.minPayment} onChange={v => upd(i, "minPayment", v)} placeholder="0" />
               </div>
             </Card>
           ))}
-          <Btn secondary onClick={add} full>+ Add Debt</Btn>
+          {debts.length > 0 && <Btn secondary onClick={add} full>+ Add Another Debt</Btn>}
         </div>
         <Card>
           <div style={{ fontSize: 10, fontFamily: FMO, color: C.gold, marginBottom: 12 }}>PAYOFF STRATEGY</div>
@@ -673,10 +803,17 @@ function AssetsStep(p) {
       <h2 style={{ fontFamily: FD, fontSize: mob ? 20 : 24, color: C.text, marginBottom: 6 }}>Current Assets</h2>
       <p style={{ fontSize: 12, color: C.dim, marginBottom: 18, fontFamily: FM }}>Each account type uses its correct after-tax growth rate in projections.</p>
       <Card style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 10, fontFamily: FMO, color: C.dim, marginBottom: 14 }}>CASH & OTHER — NO GROWTH APPLIED</div>
-        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 14 }}>
+        <div style={{ fontSize: 10, fontFamily: FMO, color: C.dim, marginBottom: 14 }}>CASH, REAL ESTATE & OTHER</div>
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr 1fr", gap: 14 }}>
           <Field label="🏦  Checking Account" prefix="$" value={p.checking} onChange={p.setChecking} placeholder="0" />
-          <Field label="🏦  Other Assets (real estate, vehicles, collectibles, etc.)" prefix="$" value={p.otherAssets} onChange={p.setOtherAssets} placeholder="0" />
+          <div>
+            <Field label="🏠  Real Estate (gross value)" prefix="$" value={p.realEstate} onChange={p.setRealEstate} placeholder="0" />
+            <div style={{ fontSize: 10, fontFamily: FM, color: C.dim, lineHeight: 1.5, marginTop: -6 }}>Grows at 2% annually in net worth projection.</div>
+          </div>
+          <div>
+            <Field label="📦  Other Assets (vehicles, collectibles, etc.)" prefix="$" value={p.otherAssets} onChange={p.setOtherAssets} placeholder="0" />
+            <div style={{ fontSize: 10, fontFamily: FM, color: C.dim, lineHeight: 1.5, marginTop: -6 }}>No growth applied — depreciating / stable value.</div>
+          </div>
         </div>
       </Card>
       <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 14, marginBottom: 14 }}>
@@ -695,8 +832,9 @@ function AssetsStep(p) {
       </div>
       <Card>
         <div style={{ fontSize: 10, fontFamily: FMO, color: C.dim, marginBottom: 12 }}>ASSET SUMMARY</div>
-        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 8 }}>
-          <Metric small label="Cash & Other" value={fmt$(calc.liquidTotal)} color={C.green} />
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(5,1fr)", gap: 8 }}>
+          <Metric small label="Cash & Other" value={fmt$(calc.liquidTotal + (Number(p.otherAssets) || 0))} color={C.green} />
+          <Metric small label="Real Estate" value={fmt$(p.realEstate)} color={C.teal} />
           <Metric small label="Tax-Deferred" value={fmt$((Number(p.bal401k) || 0) + (Number(p.balTradIRA) || 0))} color={C.gold} />
           <Metric small label="Tax-Free" value={fmt$(p.balRothIRA)} color={C.purple} />
           <Metric small label="Taxable Brok" value={fmt$(p.balBrok)} color={C.blue} />
@@ -706,6 +844,43 @@ function AssetsStep(p) {
           <Metric small label="Total Assets" value={fmtFull(calc.totalAssets)} color={C.green} />
           <Metric small label="Total Debt" value={fmtFull(calc.totalDebt)} color={C.red} />
           <Metric small label="Net Worth" value={fmtFull(calc.netWorth)} color={calc.netWorth >= 0 ? C.gold : C.red} />
+        </div>
+      </Card>
+      <Card style={{ marginTop: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ fontSize: 10, fontFamily: FMO, color: C.gold }}>ANNUAL INVESTMENT CONTRIBUTIONS</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr 1fr", gap: 14 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.orange, flexShrink: 0 }} />
+              <span style={{ fontSize: 11, fontFamily: FMO, color: C.orange, letterSpacing: 0.8 }}>TRAD IRA</span>
+            </div>
+            <Field label="Annual Contribution" prefix="$" value={p.tradIRAContrib} onChange={v => { p.setTradIRAContrib(v); if (Number(v) > 0) p.setRothContrib(""); }} placeholder="0" disabled={(Number(p.rothContrib) || 0) > 0} />
+            <div style={{ fontSize: 10, fontFamily: FM, color: (Number(p.rothContrib) || 0) > 0 ? C.orange : C.dim, lineHeight: 1.5 }}>
+              {(Number(p.rothContrib) || 0) > 0 ? "Disabled — contributing to Roth IRA instead" : "Pre-tax contributions. Cannot contribute to both Trad IRA and Roth IRA."}
+            </div>
+          </div>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.purple, flexShrink: 0 }} />
+              <span style={{ fontSize: 11, fontFamily: FMO, color: C.purple, letterSpacing: 0.8 }}>ROTH IRA</span>
+            </div>
+            <Field label="Annual Contribution" prefix="$" value={p.rothContrib} onChange={v => { p.setRothContrib(v); if (Number(v) > 0) p.setTradIRAContrib(""); }} placeholder="0" disabled={(Number(p.tradIRAContrib) || 0) > 0} />
+            <div style={{ fontSize: 10, fontFamily: FM, color: (Number(p.tradIRAContrib) || 0) > 0 ? C.purple : C.dim, lineHeight: 1.5 }}>
+              {(Number(p.tradIRAContrib) || 0) > 0 ? "Disabled — contributing to Trad IRA instead" : "After-tax. Also editable on the Tax Optimizer step."}
+            </div>
+          </div>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.blue, flexShrink: 0 }} />
+              <span style={{ fontSize: 11, fontFamily: FMO, color: C.blue, letterSpacing: 0.8 }}>BROKERAGE</span>
+            </div>
+            <Field label="Monthly Contribution" prefix="$" value={p.brokContrib} onChange={p.setBrokContrib} placeholder="0" />
+            <div style={{ fontSize: 10, fontFamily: FM, color: C.dim, lineHeight: 1.5 }}>
+              After-tax. Subject to LTCG tax drag in projections.
+            </div>
+          </div>
         </div>
       </Card>
     </div>
@@ -725,7 +900,7 @@ function GoalsStep({ eMons, setEMons, retAge, setRetAge, curAge, setCurAge, expR
         </Card>
         <Card>
           <div style={{ fontSize: 10, fontFamily: FMO, color: C.blue, marginBottom: 12 }}>RETIREMENT & RETURNS</div>
-          <Field label="Current Age" value={curAge} onChange={setCurAge} placeholder="25" />
+          <Field label="Current Age" value={curAge} onChange={setCurAge} placeholder="30" />
           <Field label="Target Retirement Age" value={retAge} onChange={setRetAge} />
           <Field label="Expected Annual Return (Gross)" value={expRet} onChange={setExpRet} suffix="%" />
           <div style={{ fontSize: 10, color: C.dim, fontFamily: FM, lineHeight: 1.6, marginTop: 4 }}>Gross rate adjusted per account type — tax drag applied automatically to taxable accounts.</div>
@@ -1156,7 +1331,7 @@ function Results(p) {
       <Card style={{ marginBottom: 13 }}>
         <div style={{ display: "flex", flexDirection: mob ? "column" : "row", alignItems: mob ? "flex-start" : "center", justifyContent: "space-between", marginBottom: 12, gap: 10 }}>
           <div>
-            <Lbl>30-Year Net Worth Projection</Lbl>
+            <Lbl>Net Worth Projection to Retirement</Lbl>
             <div style={{ fontSize: 10, fontFamily: FM, color: C.dim, marginTop: 2 }}>Base vs. what-if scenario</div>
           </div>
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
@@ -1194,10 +1369,10 @@ function Results(p) {
           </AreaChart>
         </ResponsiveContainer>
         <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 8, marginTop: 10 }}>
-          <Metric small label="Base — 10yr" value={fmt$(calc.nwProj[10]?.base)} color={C.gold} />
-          <Metric small label="Base — 30yr" value={fmt$(calc.nwProj[30]?.base)} color={C.gold} />
-          <Metric small label="What-If — 10yr" value={fmt$(calc.nwProj[10]?.whatif)} color={C.blue} />
-          <Metric small label="What-If — 30yr" value={fmt$(calc.nwProj[30]?.whatif)} color={C.blue} />
+          <Metric small label="Base — 10yr" value={fmt$(calc.nwProj[Math.min(10, calc.nwProj.length - 1)]?.base)} color={C.gold} />
+          <Metric small label={`Base — ${calc.yrs}yr`} value={fmt$(calc.nwProj[calc.nwProj.length - 1]?.base)} color={C.gold} />
+          <Metric small label="What-If — 10yr" value={fmt$(calc.nwProj[Math.min(10, calc.nwProj.length - 1)]?.whatif)} color={C.blue} />
+          <Metric small label={`What-If — ${calc.yrs}yr`} value={fmt$(calc.nwProj[calc.nwProj.length - 1]?.whatif)} color={C.blue} />
         </div>
       </Card>
 
