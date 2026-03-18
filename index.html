@@ -960,8 +960,8 @@ function TaxOptimizerStep(p) {
       <Card style={{ marginTop: 14 }}>
         <div style={{ fontSize: 10, fontFamily: FMO, color: C.gold, marginBottom: 10 }}>TAX OPPORTUNITY SUMMARY</div>
         <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 8 }}>
-          <Metric small label="HSA Room" value={fmt$(p.hasHSA === "yes" ? calc.hsaRem : 0)} color={C.green} />
-          <Metric small label="Roth Room" value={fmt$(p.hasRoth === "yes" && calc.rothElig ? calc.rothRem : 0)} color={C.purple} />
+          <Metric small label="HSA Room" value={fmtFull(p.hasHSA === "yes" ? calc.hsaRem : 0)} color={C.green} />
+          <Metric small label="Roth Room" value={fmtFull(p.hasRoth === "yes" && calc.rothElig ? calc.rothRem : 0)} color={C.purple} />
           <Metric small label={hsaRecurring === "recurring" ? "HSA Savings (Total)" : "HSA Savings (1yr)"} value={fmt$(p.hasHSA === "yes" ? calc.hsaTaxSav : 0)} color={C.gold} />
           <Metric small label={rothRecurring === "recurring" ? "Roth 30yr (Annuity)" : "Roth 30yr (Lump Sum)"} value={fmt$(p.hasRoth === "yes" && calc.rothElig ? calc.rothF30 : 0)} color={C.purple} />
         </div>
