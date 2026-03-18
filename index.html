@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UBS | Alpha Partners — Financial Planning Suite</title>
+  <meta name="description" content="A structured tool for budgeting, per-account investment growth, debt strategy, tax optimization, and 30-year wealth projection." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%23c9a84c'/></svg>" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    html, body { margin: 0; padding: 0; background: #0a0c0f; }
+    #root { min-height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React 18 -->
+  <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+
+  <!-- PropTypes (dependency for Recharts UMD) -->
+  <script crossorigin src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+
+  <!-- Recharts UMD -->
+  <script crossorigin src="https://unpkg.com/recharts@2.15.3/umd/Recharts.js"></script>
+
+  <!-- Babel Standalone -->
+  <script crossorigin src="https://unpkg.com/@babel/standalone@7.26.10/babel.min.js"></script>
+
+  <script type="text/babel">
+const { useState, useMemo, useEffect } = React;
+const { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Line, Legend } = Recharts;
+
+// ── Theme ─────────────────────────────────────────────────────────────
+const C = {
+  bg: "#0a0c0f", card: "#111318", cardHover: "#161922", border: "#1e2028",
+  text: "#e8e6e1", dim: "#8a8d96", gold: "#c9a84c", goldDim: "#c9a84c88",
+  goldSubtle: "#c9a84c18", green: "#4caf50", red: "#ef5350", blue: "#5c8fd6",
+  orange: "#e8975e", purple: "#a78bfa", pink: "#f472b6", teal: "#2dd4bf",
+};
+const FM = `'IBM Plex Sans', sans-serif`;
+const FD = `'Playfair Display', serif`;
+const FMO = `'IBM Plex Mono', monospace`;
+const GOAL_COLORS = [C.blue, C.orange, C.green, C.gold, C.purple, C.pink];
+
+const ACCT = {
+  checking:  { label: "Checking",          color: C.dim,    growth: "none",     tax: "none",       icon: "🏦" },
+  savings:   { label: "HYSA / Savings",    color: C.green,  growth: "hysa",     tax: "ordinary",   icon: "💰" },
+  k401:      { label: "401(k)",            color: C.gold,   growth: "pretax",   tax: "ordinary",   icon: "📈" },
+  trad_ira:  { label: "Traditional IRA",   color: C.orange, growth: "pretax",   tax: "ordinary",   icon: "📊" },
+  roth_ira:  { label: "Roth IRA",          color: C.purple, growth: "roth",     tax: "free",       icon: "⭐" },
+  brokerage: { label: "Brokerage",         color: C.blue,   growth: "taxable",  tax: "ltcg",       icon: "📉" },
+};
+
+const fmt$ = (v) => {
+  const n = Number(v) || 0;
+  if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+  if (Math.abs(n) >= 1e3) return `$${(n / 1e3).toFixed(0)}k`;
+  return `$${Math.round(n)}`;
+};
+const fmtFull = (v) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(v) || 0);
+const pctStr = (v) => `${((Number(v) || 0) * 100).toFixed(1)}%`;
+
+function useWidth() {
+  const [w, setW] = useState(typeof window !== "undefined" ? window.innerWidth : 800);
+  useEffect(() => {
+    const h = () => setW(window.innerWidth);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+  return w;
+}
+
+// ── Base Components ───────────────────────────────────────────────────
+const Card = ({ children, style, pad = 20 }) => (
+  <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: pad, ...style }}>{children}</div>
+);
+const Lbl = ({ children }) => (
+  <div style={{ fontSize: 10, fontFamily: FMO, color: C.dim, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 5 }}>{children}</div>
+);
+const Field = ({ label, value, onChange, prefix, suffix, type = "number", placeholder, disabled }) => (
+  <div style={{ marginBottom: 13 }}>
+    {label && <Lbl>{label}</Lbl>}
+    <div style={{ display: "flex", alignItems: "center", background: "#080a0d", border: `1px solid ${C.border}`, borderRadius: 8, padding: "0 10px", opacity: disabled ? 0.5 : 1 }}>
+      {prefix && <span style={{ color: C.gold, fontFamily: FMO, fontSize: 13, marginRight: 4 }}>{prefix}</span>}
+      <input type={type} value={value} disabled={disabled}
+        onChange={e => onChange(type === "number" ? (e.target.value === "" ? "" : Number(e.target.value)) : e.target.value)}
+        placeholder={placeholder}
+        style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: C.text, fontFamily: FMO, fontSize: 14, padding: "10px 0", width: "100%" }} />
+      {suffix && <span style={{ color: C.dim, fontFamily: FMO, fontSize: 11, whiteSpace: "nowrap" }}>{suffix}</span>}
+    </div>
+  </div>
+);
+const Sel = ({ label, value, onChange, options }) => (
+  <div style={{ marginBottom: 13 }}>
+    {label && <Lbl>{label}</Lbl>}
+    <select value={value} onChange={e => onChange(e.target.value)}
+      style={{ width: "100%", background: "#080a0d", border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontFamily: FMO, fontSize: 13, padding: "10px 10px", outline: "none" }}>
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  </div>
+);
+const Btn = ({ children, onClick, secondary, disabled, full, style: s }) => (
+  <button onClick={onClick} disabled={disabled} style={{
+    background: secondary ? "transparent" : disabled ? C.goldDim : `linear-gradient(135deg,${C.gold},#b8943f)`,
+    color: secondary ? C.gold : disabled ? C.dim : C.bg,
+    border: secondary ? `1px solid ${C.goldDim}` : "none",
+    borderRadius: 8, padding: "11px 24px", fontFamily: FMO, fontSize: 11, fontWeight: 600,
+    letterSpacing: 1, textTransform: "uppercase", cursor: disabled ? "not-allowed" : "pointer",
+    width: full ? "100%" : "auto", transition: "all 0.2s", ...s,
+  }}>{children}</button>
+);
+const Metric = ({ label, value, color, small, sub }) => (
+  <div style={{ textAlign: "center", padding: small ? "7px 4px" : "11px 4px" }}>
+    <div style={{ fontSize: 10, fontFamily: FMO, color: C.dim, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 3 }}>{label}</div>
+    <div style={{ fontSize: small ? 17 : 22, fontFamily: FD, color: color || C.gold, fontWeight: 700, lineHeight: 1 }}>{value}</div>
+    {sub && <div style={{ fontSize: 10, fontFamily: FMO, color: C.dim, marginTop: 3 }}>{sub}</div>}
+  </div>
+);
+const Rule = () => <div style={{ height: 1, background: `linear-gradient(90deg,transparent,${C.gold},transparent)`, margin: "14px 0" }} />;
+const ProgBar = ({ pct: p, color, label, sub }) => (
+  <div style={{ marginBottom: 9 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+      <span style={{ fontSize: 11, fontFamily: FM, color: C.dim }}>{label}</span>
+      <span style={{ fontSize: 11, fontFamily: FMO, color: color || C.gold }}>{sub || `${Math.min(p, 100).toFixed(0)}%`}</span>
+    </div>
+    <div style={{ height: 5, background: C.goldSubtle, borderRadius: 3, overflow: "hidden" }}>
+      <div style={{ height: "100%", width: `${Math.min(Math.max(p, 0), 100)}%`, background: color || C.gold, borderRadius: 3, transition: "width 0.8s" }} />
+    </div>
+  </div>
+);
+const Bench = ({ icon, text, color }) => (
+  <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px", background: `${color}15`, border: `1px solid ${color}40`, borderRadius: 8, marginBottom: 6 }}>
+    <span style={{ fontSize: 13 }}>{icon}</span>
+    <span style={{ fontSize: 11, fontFamily: FM, color: C.text, lineHeight: 1.5 }}>{text}</span>
+  </div>
+);
+
+const TT_STYLE = { background: "#111318", border: "1px solid #1e2028", borderRadius: 8, fontFamily: FMO, fontSize: 11 };
+
+// ── Steps ─────────────────────────────────────────────────────────────
+const STEPS = [
+  { id: "welcome" }, { id: "income", label: "Income" }, { id: "expenses", label: "Expenses" },
+  { id: "debt", label: "Debt" }, { id: "assets", label: "Assets" }, { id: "goals", label: "Goals" },
+  { id: "savings_goals", label: "Savings Goals" }, { id: "tax_optimizer", label: "Tax Optimizer" },
+  { id: "results", label: "Plan" },
+];
+
+function projectAccount(startBal, monthlyContrib, annualReturn, taxDragPct, years) {
+  const effectiveAnnual = annualReturn - taxDragPct;
+  const mr = effectiveAnnual / 100 / 12;
+  let bal = Number(startBal) || 0;
+  const pts = [{ year: 0, balance: Math.round(bal) }];
+  for (let m = 1; m <= years * 12; m++) {
+    bal = bal * (1 + mr) + (Number(monthlyContrib) || 0);
+    if (m % 12 === 0) pts.push({ year: m / 12, balance: Math.round(bal) });
+  }
+  return pts;
+}
+
+// ── Main App ──────────────────────────────────────────────────────────
+function App() {
+  const w = useWidth();
+  const mob = w < 700;
+  const [step, setStep] = useState(0);
+  const [anim, setAnim] = useState(false);
+
+  // Income
+  const [salary, setSalary] = useState("");
+  const [otherInc, setOtherInc] = useState("");
+  const [taxRate, setTaxRate] = useState(20);
+  const [k401pct, setK401pct] = useState("");
+  const [matchPct, setMatchPct] = useState("");
+
+  // Expenses
+  const [rent, setRent] = useState("");
+  const [utils, setUtils] = useState("");
+  const [groc, setGroc] = useState("");
+  const [trans, setTrans] = useState("");
+  const [ins, setIns] = useState("");
+  const [minDebt, setMinDebt] = useState("");
+  const [otherNeeds, setOtherNeeds] = useState("");
+  const [dining, setDining] = useState("");
+  const [ent, setEnt] = useState("");
+  const [shop, setShop] = useState("");
+  const [subs, setSubs] = useState("");
+  const [trav, setTrav] = useState("");
+  const [otherWants, setOtherWants] = useState("");
+
+  // Debt
+  const [debts, setDebts] = useState([{ name: "Student Loans", balance: "", rate: 5.5, minPayment: "" }]);
+  const [debtStrat, setDebtStrat] = useState("avalanche");
+
+  // Assets
+  const [checking, setChecking] = useState("");
+  const [savings, setSavings] = useState("");
+  const [hysaRate, setHysaRate] = useState(3.75);
+  const [bal401k, setBal401k] = useState("");
+  const [balTradIRA, setBalTradIRA] = useState("");
+  const [balRothIRA, setBalRothIRA] = useState("");
+  const [balBrok, setBalBrok] = useState("");
+  const [otherAssets, setOtherAssets] = useState("");
+
+  // Goals
+  const [eMons, setEMons] = useState(6);
+  const [retAge, setRetAge] = useState(65);
+  const [curAge, setCurAge] = useState("");
+  const [expRet, setExpRet] = useState(7);
+
+  // Savings Goals
+  const [sGoals, setSGoals] = useState([]);
+
+  // Tax Optimizer
+  const [hasHSA, setHasHSA] = useState("yes");
+  const [hsaContrib, setHsaContrib] = useState("");
+  const [hsaType, setHsaType] = useState("individual");
+  const [hsaRecurring, setHsaRecurring] = useState("recurring");
+  const [hasRoth, setHasRoth] = useState("yes");
+  const [rothContrib, setRothContrib] = useState("");
+  const [rothRecurring, setRothRecurring] = useState("recurring");
+  const [rothCatchup, setRothCatchup] = useState("no"); // default off = $7,500 base limit
+  const [filingStatus, setFilingStatus] = useState("single");
+
+  // What-if
+  const [wiSavBoost, setWiSavBoost] = useState(5);
+  const [wiRetBoost, setWiRetBoost] = useState(1);
+
+  const nav = (t) => { setAnim(true); setTimeout(() => { setStep(t); setAnim(false); }, 230); };
+
+  const calc = useMemo(() => {
+    const grossM = ((Number(salary) || 0) + (Number(otherInc) || 0)) / 12;
+    const c401k = grossM * ((Number(k401pct) || 0) / 100);
+    const match = grossM * (Math.min(Number(matchPct) || 0, Number(k401pct) || 0) / 100);
+    const taxable = grossM - c401k;
+    const tr = Number(taxRate) || 0;
+    const taxes = taxable * (tr / 100);
+    const net = taxable - taxes;
+
+    const needs = [rent, utils, groc, trans, ins, minDebt, otherNeeds].reduce((s, v) => s + (Number(v) || 0), 0);
+    const wants = [dining, ent, shop, subs, trav, otherWants].reduce((s, v) => s + (Number(v) || 0), 0);
+    const surplus = net - needs - wants;
+    const needsPct = net > 0 ? needs / net : 0;
+    const wantsPct = net > 0 ? wants / net : 0;
+    const savPct = net > 0 ? Math.max(0, surplus) / net : 0;
+
+    const totalDebt = debts.reduce((s, d) => s + (Number(d.balance) || 0), 0);
+    const liquidTotal = (Number(checking) || 0) + (Number(savings) || 0);
+    const investTotal = (Number(bal401k) || 0) + (Number(balTradIRA) || 0) + (Number(balRothIRA) || 0) + (Number(balBrok) || 0);
+    const totalAssets = liquidTotal + investTotal + (Number(otherAssets) || 0);
+    const netWorth = totalAssets - totalDebt;
+
+    const eFund = needs * eMons;
+    const eProg = savings > 0 ? Math.min(100, (savings / eFund) * 100) : 0;
+
+    const sorted = [...debts].filter(d => d.balance > 0).sort((a, b) =>
+      debtStrat === "avalanche" ? b.rate - a.rate : a.balance - b.balance);
+    let payoffMo = 0, sim = sorted.map(d => ({ ...d, rem: Number(d.balance) || 0 }));
+    const extraDebt = Math.max(0, surplus * 0.3);
+    let sc = 0;
+    while (sim.some(d => d.rem > 0) && sc++ < 600) {
+      payoffMo++;
+      let ex = extraDebt;
+      for (let d of sim) {
+        if (d.rem <= 0) continue;
+        const int = d.rem * ((Number(d.rate) || 0) / 100 / 12);
+        const pay = (Number(d.minPayment) || 0) + ex; ex = 0;
+        d.rem = Math.max(0, d.rem + int - pay);
+        if (d.rem === 0) ex = pay - int;
+      }
+    }
+
+    const r = Number(expRet) || 7;
+    const yrs = Math.max(1, retAge - curAge);
+    const retMo = c401k + match;
+    const ltcgRate = tr >= 32 ? 20 : 15;
+    const brokerageDrag = 0.30 * (ltcgRate / 100) * r;
+    const hysaEffective = (Number(hysaRate) || 3.75) * (1 - tr / 100);
+    const pretaxRate = r;
+    const rothRate = r;
+
+    const pts401k = projectAccount(bal401k, retMo, pretaxRate, 0, yrs);
+    const ptsTradIRA = projectAccount(balTradIRA, 0, pretaxRate, 0, yrs);
+    const ptsRothIRA = projectAccount(balRothIRA, 0, rothRate, 0, yrs);
+    const ptsBrok = projectAccount(balBrok, 0, r, brokerageDrag, yrs);
+    const ptsSavings = projectAccount(savings, 0, hysaEffective, 0, yrs);
+
+    const acctProj = pts401k.map((p, i) => ({
+      year: curAge + p.year,
+      "401k": p.balance,
+      "Trad IRA": ptsTradIRA[i]?.balance || 0,
+      "Roth IRA": ptsRothIRA[i]?.balance || 0,
+      "Brokerage": ptsBrok[i]?.balance || 0,
+      "HYSA": ptsSavings[i]?.balance || 0,
+    }));
+
+    const retFinalIdx = acctProj.length - 1;
+    const retFinal401k = acctProj[retFinalIdx]["401k"];
+    const retFinalTrad = acctProj[retFinalIdx]["Trad IRA"];
+    const retFinalRoth = acctProj[retFinalIdx]["Roth IRA"];
+    const retFinalBrok = acctProj[retFinalIdx]["Brokerage"];
+    const retFinalHYSA = acctProj[retFinalIdx]["HYSA"];
+    const retFinalTotal = retFinal401k + retFinalTrad + retFinalRoth + retFinalBrok + retFinalHYSA;
+
+    const nwProj = [];
+    let nwBase = netWorth, nwWi = netWorth;
+    const mr = r / 100 / 12;
+    const wiMr = (r + wiRetBoost) / 100 / 12;
+    const mSavBase = Math.max(0, surplus) * 0.4;
+    const mSavWi = Math.max(0, surplus + net * (wiSavBoost / 100)) * 0.4;
+    for (let m = 0; m <= 360; m++) {
+      if (m % 12 === 0) nwProj.push({ year: curAge + m / 12, base: Math.round(nwBase), whatif: Math.round(nwWi) });
+      nwBase = nwBase * (1 + mr) + mSavBase;
+      nwWi = nwWi * (1 + wiMr) + mSavWi;
+    }
+
+    const totPri = sGoals.reduce((s, g) => s + (Number(g.priority) || 1), 0);
+    const goalProj = sGoals.map((g, i) => {
+      const alloc = totPri > 0 ? (Math.max(0, surplus) * 0.4) * ((Number(g.priority) || 1) / totPri) : 0;
+      const gmr = r / 100 / 12; let bal = 0; const pts = []; let reached = null;
+      const months = (Number(g.years) || 5) * 12;
+      for (let m = 0; m <= months; m++) {
+        if (m % 3 === 0) pts.push({ month: m, balance: Math.round(bal), target: Number(g.amount) || 0 });
+        if (bal >= (Number(g.amount) || 0) && !reached) reached = m;
+        bal = bal * (1 + gmr) + alloc;
+      }
+      return { ...g, alloc, pts, reached, color: GOAL_COLORS[i % GOAL_COLORS.length] };
+    });
+
+    // Tax optimizer — 2026 limits (IRS IR-2025-111, Nov 13 2025)
+    const hsaLimit = hsaType === "family" ? 8550 : 4300;
+    const catchupAdd = (rothCatchup === "yes") ? 1100 : 0;
+    const rothLimit = 7500 + catchupAdd; // 2026: $7,500 base, $8,600 with 50+ catch-up
+    const phaseout = filingStatus === "mfj" ? { s: 242000, e: 252000 } : { s: 153000, e: 168000 };
+    const annInc = (Number(salary) || 0) + (Number(otherInc) || 0);
+    const rothElig = annInc < phaseout.e;
+    const rothMax = !rothElig ? 0
+      : annInc <= phaseout.s ? rothLimit
+      : Math.max(0, Math.round(rothLimit * (1 - (annInc - phaseout.s) / (phaseout.e - phaseout.s))));
+    const hsaRem = Math.max(0, hsaLimit - (Number(hsaContrib) || 0));
+    const rothRem = Math.max(0, rothMax - (Number(rothContrib) || 0));
+
+    const hsaTaxSav = hsaRecurring === "recurring"
+      ? hsaRem * (tr / 100) * yrs
+      : hsaRem * (tr / 100);
+
+    const rothF30 = rothRecurring === "recurring"
+      ? (() => { const rr = (Number(expRet) || 7) / 100; return rothRem * ((Math.pow(1 + rr, 30) - 1) / rr) * (1 + rr); })()
+      : rothRem * Math.pow(1 + (Number(expRet) || 7) / 100, 30);
+
+    const benchmarks = [];
+    const housingPct = net > 0 ? (Number(rent) || 0) / net : 0;
+    if (housingPct > 0.33) benchmarks.push({ icon: "⚠️", text: `Housing is ${pctStr(housingPct)} of net — guideline is under 30–33%.`, color: C.red });
+    else if (housingPct > 0) benchmarks.push({ icon: "✅", text: `Housing at ${pctStr(housingPct)} of net income — within the 30–33% guideline.`, color: C.green });
+    if (needsPct > 0.55) benchmarks.push({ icon: "⚠️", text: `Essential expenses are ${pctStr(needsPct)} of net — target is 50%.`, color: C.red });
+    if (savPct < 0.1 && net > 0) benchmarks.push({ icon: "⚠️", text: `Savings rate is ${pctStr(savPct)} — aim for at least 20%.`, color: C.red });
+    else if (savPct >= 0.2) benchmarks.push({ icon: "✅", text: `Strong savings rate of ${pctStr(savPct)} — above the 20% benchmark.`, color: C.green });
+    if (totalDebt > 0 && annInc > 0 && totalDebt / annInc > 0.36) benchmarks.push({ icon: "⚠️", text: `Debt-to-income is elevated — guideline is under 36%.`, color: C.orange });
+    if (eProg < 50 && eFund > 0) benchmarks.push({ icon: "⚠️", text: `Emergency fund is ${eProg.toFixed(0)}% funded — prioritize ${eMons} months.`, color: C.orange });
+    else if (eProg >= 100) benchmarks.push({ icon: "✅", text: `Emergency fund fully funded at ${eMons} months.`, color: C.green });
+    if (hasHSA === "yes" && hsaRem > 0) benchmarks.push({ icon: "💡", text: `$${hsaRem.toLocaleString()} HSA room remaining — triple tax-advantaged.`, color: C.blue });
+    if (rothElig && rothRem > 0) benchmarks.push({ icon: "💡", text: `$${rothRem.toLocaleString()} Roth IRA contribution room available.`, color: C.purple });
+    if (brokerageDrag > 0 && (Number(balBrok) || 0) > 0) benchmarks.push({ icon: "📊", text: `Brokerage annual tax drag est. ${brokerageDrag.toFixed(2)}% — effective rate ${(r - brokerageDrag).toFixed(2)}%.`, color: C.blue });
+
+    const sf = [
+      { name: "Budget Balance", score: needsPct <= 0.55 && wantsPct <= 0.35 ? 25 : needsPct <= 0.6 ? 15 : 5, max: 25 },
+      { name: "Emergency Fund", score: Math.min(25, (eProg / 100) * 25), max: 25 },
+      { name: "Savings Rate", score: savPct >= 0.2 ? 25 : Math.round(savPct / 0.2 * 25), max: 25 },
+      { name: "Debt Mgmt", score: totalDebt === 0 ? 25 : payoffMo < 36 ? 20 : payoffMo < 60 ? 15 : 5, max: 25 },
+    ];
+    const score = sf.reduce((s, f) => s + f.score, 0);
+
+    const seqAccts = [
+      { label: "1st — Taxable Brokerage", color: C.blue, icon: "📉", note: "Spend brokerage first. Long-term gains taxed at lower LTCG rates (0–20%). Preserves tax-deferred compounding." },
+      { label: "2nd — Traditional 401k / IRA", color: C.gold, icon: "📈", note: "Drawdown pre-tax accounts next. Withdrawals taxed as ordinary income. Use strategically to manage tax brackets." },
+      { label: "3rd — Roth IRA (last)", color: C.purple, icon: "⭐", note: "Preserve Roth as long as possible. Tax-free growth and no RMDs make it the most valuable long-term asset." },
+    ];
+
+    return {
+      grossM, net, c401k, match, taxes, needs, wants, surplus, needsPct, wantsPct, savPct,
+      totalDebt, totalAssets, liquidTotal, investTotal, netWorth, eFund, eProg,
+      sorted, payoffMo, extraDebt,
+      acctProj, retFinal401k, retFinalTrad, retFinalRoth, retFinalBrok, retFinalHYSA, retFinalTotal,
+      yrs, retMo, brokerageDrag, hysaEffective, ltcgRate,
+      nwProj, goalProj,
+      hsaLimit, rothMax, rothElig, hsaRem, rothRem, hsaTaxSav, rothF30,
+      benchmarks, sf, score, seqAccts, taxRate: tr,
+    };
+  }, [salary, otherInc, taxRate, k401pct, matchPct,
+    rent, utils, groc, trans, ins, minDebt, otherNeeds,
+    dining, ent, shop, subs, trav, otherWants,
+    debts, debtStrat,
+    checking, savings, hysaRate, bal401k, balTradIRA, balRothIRA, balBrok, otherAssets,
+    eMons, retAge, curAge, expRet, sGoals,
+    hasHSA, hsaContrib, hsaType, hsaRecurring, hasRoth, rothContrib, rothRecurring, rothCatchup, filingStatus,
+    wiSavBoost, wiRetBoost]);
+
+  const sp = {
+    salary, setSalary, otherInc, setOtherInc, taxRate, setTaxRate, k401pct, setK401pct, matchPct, setMatchPct,
+    rent, setRent, utils, setUtils, groc, setGroc, trans, setTrans, ins, setIns,
+    minDebt, setMinDebt, otherNeeds, setOtherNeeds,
+    dining, setDining, ent, setEnt, shop, setShop, subs, setSubs, trav, setTrav, otherWants, setOtherWants,
+    debts, setDebts, debtStrat, setDebtStrat,
+    checking, setChecking, savings, setSavings, hysaRate, setHysaRate,
+    bal401k, setBal401k, balTradIRA, setBalTradIRA, balRothIRA, setBalRothIRA, balBrok, setBalBrok,
+    otherAssets, setOtherAssets,
+    eMons, setEMons, retAge, setRetAge, curAge, setCurAge, expRet, setExpRet,
+    sGoals, setSGoals,
+    hasHSA, setHasHSA, hsaContrib, setHsaContrib, hsaType, setHsaType, hsaRecurring, setHsaRecurring,
+    hasRoth, setHasRoth, rothContrib, setRothContrib, rothRecurring, setRothRecurring, rothCatchup, setRothCatchup, filingStatus, setFilingStatus,
+    wiSavBoost, setWiSavBoost, wiRetBoost, setWiRetBoost,
+    calc, mob,
+  };
+
+  const renderStep = () => {
+    switch (STEPS[step].id) {
+      case "welcome": return <Welcome onStart={() => nav(1)} mob={mob} />;
+      case "income": return <IncomeStep {...sp} />;
+      case "expenses": return <ExpensesStep {...sp} />;
+      case "debt": return <DebtStep {...sp} />;
+      case "assets": return <AssetsStep {...sp} />;
+      case "goals": return <GoalsStep {...sp} />;
+      case "savings_goals": return <SavingsGoalsStep {...sp} />;
+      case "tax_optimizer": return <TaxOptimizerStep {...sp} />;
+      case "results": return <Results {...sp} />;
+      default: return null;
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: FM }}>
+      <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+      <style>{`
+        *,*::before,*::after{box-sizing:border-box}
+        ::-webkit-scrollbar{width:5px;height:5px}
+        ::-webkit-scrollbar-track{background:${C.bg}}
+        ::-webkit-scrollbar-thumb{background:${C.border};border-radius:3px}
+        input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
+        input[type=number]{-moz-appearance:textfield}
+        select option{background:${C.card};color:${C.text}}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+      `}</style>
+
+      <header style={{ borderBottom: `1px solid ${C.border}`, padding: mob ? "12px 16px" : "14px 28px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 7, height: 7, background: C.gold, borderRadius: "50%", boxShadow: `0 0 10px ${C.goldDim}` }} />
+          <span style={{ fontFamily: FMO, fontSize: mob ? 10 : 11, letterSpacing: 2.5, color: C.gold, textTransform: "uppercase" }}>UBS | Alpha Partners</span>
+        </div>
+        {!mob && <span style={{ fontFamily: FMO, fontSize: 10, color: C.dim }}>Financial Planning Suite</span>}
+      </header>
+
+      {step > 0 && (
+        <div style={{ padding: mob ? "10px 16px" : "12px 28px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          {mob ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontFamily: FMO, fontSize: 11, color: C.dim }}>Step {step} of {STEPS.length - 1}</span>
+              <span style={{ fontFamily: FMO, fontSize: 12, color: C.gold, fontWeight: 600 }}>{STEPS[step].label}</span>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 3, overflowX: "auto" }}>
+              {STEPS.filter(s => s.label).map((s, i) => {
+                const idx = STEPS.indexOf(s);
+                return (
+                  <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                    <div onClick={() => idx <= step && nav(idx)} style={{
+                      padding: "5px 12px", borderRadius: 20, fontSize: 10, fontFamily: FMO,
+                      background: idx === step ? C.gold : idx < step ? C.goldSubtle : "transparent",
+                      color: idx === step ? C.bg : idx < step ? C.gold : C.dim,
+                      cursor: idx <= step ? "pointer" : "default", fontWeight: idx === step ? 700 : 400,
+                      transition: "all 0.2s", whiteSpace: "nowrap",
+                    }}>{s.label}</div>
+                    {i < STEPS.filter(s => s.label).length - 1 && <div style={{ width: 10, height: 1, background: C.border, flexShrink: 0 }} />}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {mob && (
+            <div style={{ display: "flex", gap: 5 }}>
+              {STEPS.filter(s => s.label).map((_, i) => (
+                <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: i < step ? C.gold : C.border }} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <main style={{ maxWidth: 1060, margin: "0 auto", padding: mob ? "18px 14px" : "26px 24px", opacity: anim ? 0 : 1, transform: anim ? "translateY(6px)" : "none", transition: "all 0.23s ease", animation: "fadeUp 0.45s ease" }}>
+        {renderStep()}
+      </main>
+
+      {step > 0 && step < STEPS.length - 1 && (
+        <div style={{ maxWidth: 1060, margin: "0 auto", padding: mob ? "0 14px 28px" : "0 24px 36px", display: "flex", justifyContent: "space-between" }}>
+          <Btn secondary onClick={() => nav(step - 1)}>← Back</Btn>
+          <Btn onClick={() => nav(step + 1)}>Continue →</Btn>
+        </div>
+      )}
+      {step === STEPS.length - 1 && (
+        <div style={{ maxWidth: 1060, margin: "0 auto", padding: mob ? "0 14px 28px" : "0 24px 36px" }}>
+          <Btn secondary onClick={() => nav(step - 1)}>← Edit Inputs</Btn>
+        </div>
+      )}
+
+      <footer style={{ borderTop: `1px solid ${C.border}`, padding: "12px 24px", textAlign: "center" }}>
+        <span style={{ fontFamily: FMO, fontSize: 9, color: C.dim, letterSpacing: 1 }}>
+          UBS | ALPHA PARTNERS · FINANCIAL PLANNING TOOL · FOR EDUCATIONAL PURPOSES ONLY — NOT INVESTMENT ADVICE
+        </span>
+      </footer>
+    </div>
+  );
+}
+
+// ── Welcome ───────────────────────────────────────────────────────────
+function Welcome({ onStart, mob }) {
+  return (
+    <div style={{ textAlign: "center", maxWidth: 560, margin: "60px auto 0", animation: "fadeUp 0.7s ease" }}>
+      <div style={{ width: 54, height: 54, margin: "0 auto 18px", border: `2px solid ${C.gold}`, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: 20, height: 20, background: `linear-gradient(135deg,${C.gold},#b8943f)`, borderRadius: "50%" }} />
+      </div>
+      <h1 style={{ fontFamily: FD, fontSize: mob ? 30 : 38, fontWeight: 700, margin: "0 0 8px", color: C.text, lineHeight: 1.2 }}>
+        Your Financial<br /><span style={{ color: C.gold }}>Blueprint</span>
+      </h1>
+      <p style={{ fontFamily: FM, fontSize: 14, color: C.dim, lineHeight: 1.7, margin: "14px 0 32px", fontWeight: 300 }}>
+        A structured tool for budgeting, per-account investment growth, debt strategy, tax optimization, and 30-year wealth projection.
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "repeat(3,1fr)", gap: 10, marginBottom: 32 }}>
+        {[
+          { icon: "◎", t: "50/30/20 Budget", d: "Needs, wants & savings" },
+          { icon: "◈", t: "Per-Account Growth", d: "Tax-correct projections" },
+          { icon: "◉", t: "Tax Optimizer", d: "HSA, Roth & sequencing" },
+        ].map(f => (
+          <Card key={f.t} pad={14}>
+            <div style={{ fontSize: 20, color: C.gold, marginBottom: 5 }}>{f.icon}</div>
+            <div style={{ fontFamily: FMO, fontSize: 10, color: C.text, marginBottom: 2 }}>{f.t}</div>
+            <div style={{ fontSize: 11, color: C.dim }}>{f.d}</div>
+          </Card>
+        ))}
+      </div>
+      <Btn onClick={onStart}>Begin Planning →</Btn>
+    </div>
+  );
+}
+
+// ── Income ────────────────────────────────────────────────────────────
+function IncomeStep({ salary, setSalary, otherInc, setOtherInc, taxRate, setTaxRate, k401pct, setK401pct, matchPct, setMatchPct, calc, mob }) {
+  return (
+    <div>
+      <h2 style={{ fontFamily: FD, fontSize: mob ? 20 : 24, color: C.text, marginBottom: 18 }}>Income & Tax Details</h2>
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 14 }}>
+        <Card>
+          <Lbl>Gross Income</Lbl><div style={{ marginBottom: 10 }} />
+          <Field label="Annual Salary" prefix="$" value={salary} onChange={setSalary} placeholder="0" />
+          <Field label="Other Annual Income" prefix="$" value={otherInc} onChange={setOtherInc} placeholder="0" />
+          <Field label="Effective Tax Rate" value={taxRate} onChange={setTaxRate} suffix="%" placeholder="0" />
+        </Card>
+        <Card>
+          <Lbl>401(k) / Retirement</Lbl><div style={{ marginBottom: 10 }} />
+          <Field label="Your Contribution" value={k401pct} onChange={setK401pct} suffix="% of salary" placeholder="0" />
+          <Field label="Employer Match" value={matchPct} onChange={setMatchPct} suffix="%" placeholder="0" />
+          <Rule />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <Metric small label="Your Contrib" value={fmt$(calc.c401k)} />
+            <Metric small label="Employer Match" value={fmt$(calc.match)} color={C.green} />
+          </div>
+        </Card>
+      </div>
+      <Card style={{ marginTop: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 8 }}>
+          <Metric label="Gross Monthly" value={fmt$(calc.grossM)} />
+          <Metric label="401k Deduction" value={fmt$(calc.c401k)} color={C.blue} />
+          <Metric label="Est. Taxes" value={fmt$(calc.taxes)} color={C.red} />
+          <Metric label="Net Monthly" value={fmt$(calc.net)} color={C.green} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ── Expenses ──────────────────────────────────────────────────────────
+function ExpensesStep(p) {
+  const { calc, mob } = p;
+  return (
+    <div>
+      <h2 style={{ fontFamily: FD, fontSize: mob ? 20 : 24, color: C.text, marginBottom: 18 }}>Monthly Expenses</h2>
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 14 }}>
+        <Card>
+          <div style={{ fontSize: 10, fontFamily: FMO, color: C.green, marginBottom: 12 }}>NEEDS — ESSENTIAL (Target 50%)</div>
+          <Field label="Rent / Mortgage" prefix="$" value={p.rent} onChange={p.setRent} placeholder="0" />
+          <Field label="Utilities" prefix="$" value={p.utils} onChange={p.setUtils} placeholder="0" />
+          <Field label="Groceries" prefix="$" value={p.groc} onChange={p.setGroc} placeholder="0" />
+          <Field label="Transportation" prefix="$" value={p.trans} onChange={p.setTrans} placeholder="0" />
+          <Field label="Insurance" prefix="$" value={p.ins} onChange={p.setIns} placeholder="0" />
+          <Field label="Min Debt Payments" prefix="$" value={p.minDebt} onChange={p.setMinDebt} placeholder="0" />
+          <Field label="Other Essentials" prefix="$" value={p.otherNeeds} onChange={p.setOtherNeeds} placeholder="0" />
+        </Card>
+        <Card>
+          <div style={{ fontSize: 10, fontFamily: FMO, color: C.orange, marginBottom: 12 }}>WANTS — DISCRETIONARY (Target 30%)</div>
+          <Field label="Dining Out" prefix="$" value={p.dining} onChange={p.setDining} placeholder="0" />
+          <Field label="Entertainment" prefix="$" value={p.ent} onChange={p.setEnt} placeholder="0" />
+          <Field label="Shopping" prefix="$" value={p.shop} onChange={p.setShop} placeholder="0" />
+          <Field label="Subscriptions" prefix="$" value={p.subs} onChange={p.setSubs} placeholder="0" />
+          <Field label="Travel" prefix="$" value={p.trav} onChange={p.setTrav} placeholder="0" />
+          <Field label="Other Wants" prefix="$" value={p.otherWants} onChange={p.setOtherWants} placeholder="0" />
+        </Card>
+      </div>
+      <Card style={{ marginTop: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 8 }}>
+          <Metric small label="Needs" value={fmt$(calc.needs)} sub={`${(calc.needsPct * 100).toFixed(0)}%`} color={calc.needsPct > 0.55 ? C.red : C.green} />
+          <Metric small label="Wants" value={fmt$(calc.wants)} color={calc.wantsPct > 0.35 ? C.red : C.orange} />
+          <Metric small label="Savings" value={fmt$(Math.max(0, calc.surplus))} color={calc.savPct >= 0.2 ? C.green : C.red} />
+          <Metric small label="Surplus" value={fmt$(calc.surplus)} color={calc.surplus >= 0 ? C.green : C.red} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ── Debt ──────────────────────────────────────────────────────────────
+function DebtStep({ debts, setDebts, debtStrat, setDebtStrat, mob }) {
+  const add = () => setDebts([...debts, { name: "", balance: 0, rate: 0, minPayment: 0 }]);
+  const upd = (i, f, v) => { const d = [...debts]; d[i] = { ...d[i], [f]: v }; setDebts(d); };
+  const rem = (i) => setDebts(debts.filter((_, j) => j !== i));
+  return (
+    <div>
+      <h2 style={{ fontFamily: FD, fontSize: mob ? 20 : 24, color: C.text, marginBottom: 18 }}>Debt Inventory</h2>
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "2fr 1fr", gap: 14 }}>
+        <div>
+          {debts.map((d, i) => (
+            <Card key={i} style={{ marginBottom: 11 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9 }}>
+                <input value={d.name} onChange={e => upd(i, "name", e.target.value)} placeholder="Debt Name"
+                  style={{ background: "transparent", border: "none", outline: "none", fontFamily: FM, fontSize: 14, fontWeight: 500, color: C.text, flex: 1 }} />
+                <button onClick={() => rem(i)} style={{ background: "transparent", border: "none", color: C.red, cursor: "pointer", fontFamily: FMO, fontSize: 10 }}>REMOVE</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                <Field label="Balance" prefix="$" value={d.balance} onChange={v => upd(i, "balance", v)} placeholder="0" />
+                <Field label="APR" value={d.rate} onChange={v => upd(i, "rate", v)} suffix="%" />
+                <Field label="Min Payment" prefix="$" value={d.minPayment} onChange={v => upd(i, "minPayment", v)} placeholder="0" />
+              </div>
+            </Card>
+          ))}
+          <Btn secondary onClick={add} full>+ Add Debt</Btn>
+        </div>
+        <Card>
+          <div style={{ fontSize: 10, fontFamily: FMO, color: C.gold, marginBottom: 12 }}>PAYOFF STRATEGY</div>
+          <Sel label="Method" value={debtStrat} onChange={setDebtStrat} options={[
+            { value: "avalanche", label: "Avalanche (Highest Rate First)" },
+            { value: "snowball", label: "Snowball (Lowest Balance First)" },
+          ]} />
+          <Rule />
+          <div style={{ fontSize: 11, fontFamily: FM, color: C.dim, lineHeight: 1.7 }}>
+            {debtStrat === "avalanche" ? "Targets highest-rate debt first — mathematically optimal for minimizing total interest paid."
+              : "Eliminates smallest balances first — psychologically motivating, building momentum."}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── Assets ────────────────────────────────────────────────────────────
+function AssetsStep(p) {
+  const { calc, mob } = p;
+  const acctRows = [
+    { key: "savings", label: "HYSA / Savings", color: C.green, note: `Grows at effective ${calc.hysaEffective.toFixed(2)}% after ordinary income tax`, bal: p.savings, setBal: p.setSavings },
+    { key: "401k", label: "401(k)", color: C.gold, note: "Pre-tax, grows at full expected return. Taxed as ordinary income on withdrawal.", bal: p.bal401k, setBal: p.setBal401k },
+    { key: "trad_ira", label: "Traditional IRA", color: C.orange, note: "Pre-tax, grows at full expected return. Taxed as ordinary income on withdrawal.", bal: p.balTradIRA, setBal: p.setBalTradIRA },
+    { key: "roth_ira", label: "Roth IRA", color: C.purple, note: "After-tax contributions. Grows tax-free. Withdrawals tax-free in retirement.", bal: p.balRothIRA, setBal: p.setBalRothIRA },
+    { key: "brokerage", label: "Brokerage", color: C.blue, note: `After-tax. Est. drag ${calc.brokerageDrag.toFixed(2)}%/yr from LTCG (${calc.ltcgRate}% rate, 30% realization). Effective rate ${((Number(p.expRet) || 7) - calc.brokerageDrag).toFixed(2)}%.`, bal: p.balBrok, setBal: p.setBalBrok },
+  ];
+  return (
+    <div>
+      <h2 style={{ fontFamily: FD, fontSize: mob ? 20 : 24, color: C.text, marginBottom: 6 }}>Current Assets</h2>
+      <p style={{ fontSize: 12, color: C.dim, marginBottom: 18, fontFamily: FM }}>Each account type uses its correct after-tax growth rate in projections.</p>
+      <Card style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 10, fontFamily: FMO, color: C.dim, marginBottom: 14 }}>CASH & OTHER — NO GROWTH APPLIED</div>
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 14 }}>
+          <Field label="🏦  Checking Account" prefix="$" value={p.checking} onChange={p.setChecking} placeholder="0" />
+          <Field label="🏦  Other Assets (real estate, vehicles, collectibles, etc.)" prefix="$" value={p.otherAssets} onChange={p.setOtherAssets} placeholder="0" />
+        </div>
+      </Card>
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 14, marginBottom: 14 }}>
+        {acctRows.map(a => (
+          <Card key={a.key}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.color, flexShrink: 0 }} />
+              <span style={{ fontSize: 11, fontFamily: FMO, color: a.color, textTransform: "uppercase", letterSpacing: 0.8 }}>{a.label}</span>
+            </div>
+            <Field prefix="$" value={a.bal} onChange={a.setBal} placeholder="0" />            <div style={{ fontSize: 10, fontFamily: FM, color: C.dim, lineHeight: 1.6, marginTop: 4 }}>{a.note}</div>
+            {a.key === "savings" && (
+              <Field label="HYSA Annual Rate" value={p.hysaRate} onChange={p.setHysaRate} suffix="% gross" />
+            )}
+          </Card>
+        ))}
+      </div>
+      <Card>
+        <div style={{ fontSize: 10, fontFamily: FMO, color: C.dim, marginBottom: 12 }}>ASSET SUMMARY</div>
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 8 }}>
+          <Metric small label="Cash & Other" value={fmt$(calc.liquidTotal)} color={C.green} />
+          <Metric small label="Tax-Deferred" value={fmt$((Number(p.bal401k) || 0) + (Number(p.balTradIRA) || 0))} color={C.gold} />
+          <Metric small label="Tax-Free" value={fmt$(p.balRothIRA)} color={C.purple} />
+          <Metric small label="Taxable Brok" value={fmt$(p.balBrok)} color={C.blue} />
+        </div>
+        <Rule />
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(3,1fr)", gap: 8 }}>
+          <Metric small label="Total Assets" value={fmtFull(calc.totalAssets)} color={C.green} />
+          <Metric small label="Total Debt" value={fmtFull(calc.totalDebt)} color={C.red} />
+          <Metric small label="Net Worth" value={fmtFull(calc.netWorth)} color={calc.netWorth >= 0 ? C.gold : C.red} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ── Goals ─────────────────────────────────────────────────────────────
+function GoalsStep({ eMons, setEMons, retAge, setRetAge, curAge, setCurAge, expRet, setExpRet, mob }) {
+  return (
+    <div>
+      <h2 style={{ fontFamily: FD, fontSize: mob ? 20 : 24, color: C.text, marginBottom: 18 }}>Core Financial Goals</h2>
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 14 }}>
+        <Card>
+          <div style={{ fontSize: 10, fontFamily: FMO, color: C.green, marginBottom: 12 }}>EMERGENCY FUND</div>
+          <Field label="Months of Coverage" value={eMons} onChange={setEMons} suffix="months" />
+          <div style={{ fontSize: 11, color: C.dim, fontFamily: FM, lineHeight: 1.6 }}>Standard recommendation: 3–6 months of essential expenses.</div>
+        </Card>
+        <Card>
+          <div style={{ fontSize: 10, fontFamily: FMO, color: C.blue, marginBottom: 12 }}>RETIREMENT & RETURNS</div>
+          <Field label="Current Age" value={curAge} onChange={setCurAge} placeholder="25" />
+          <Field label="Target Retirement Age" value={retAge} onChange={setRetAge} />
+          <Field label="Expected Annual Return (Gross)" value={expRet} onChange={setExpRet} suffix="%" />
+          <div style={{ fontSize: 10, color: C.dim, fontFamily: FM, lineHeight: 1.6, marginTop: 4 }}>Gross rate adjusted per account type — tax drag applied automatically to taxable accounts.</div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── Savings Goals ─────────────────────────────────────────────────────
+function SavingsGoalsStep({ sGoals, setSGoals, calc, mob }) {
+  const add = () => setSGoals([...sGoals, { name: "", amount: 0, years: 5, priority: 1 }]);
+  const upd = (i, f, v) => { const g = [...sGoals]; g[i] = { ...g[i], [f]: v }; setSGoals(g); };
+  const rem = (i) => setSGoals(sGoals.filter((_, j) => j !== i));
+  const totPri = sGoals.reduce((s, g) => s + (Number(g.priority) || 1), 0);
+  const avail = Math.max(0, calc.surplus) * 0.4;
+  return (
+    <div>
+      <h2 style={{ fontFamily: FD, fontSize: mob ? 20 : 24, color: C.text, marginBottom: 18 }}>Savings Goals</h2>
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "2fr 1fr", gap: 14 }}>
+        <div>
+          {sGoals.length === 0 && (
+            <Card style={{ textAlign: "center", padding: 36, marginBottom: 11 }}>
+              <div style={{ fontSize: 32, opacity: 0.3, marginBottom: 10 }}>◎</div>
+              <div style={{ fontFamily: FD, fontSize: 17, color: C.dim, marginBottom: 7 }}>No savings goals yet</div>
+              <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.6, maxWidth: 260, margin: "0 auto 18px" }}>
+                Add goals like a down payment or vacation to see compound growth projections.
+              </div>
+              <Btn onClick={add}>+ Add Your First Goal</Btn>
+            </Card>
+          )}
+          {sGoals.map((g, i) => (
+            <Card key={i} style={{ marginBottom: 11 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 9 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, flex: 1, minWidth: 0 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: GOAL_COLORS[i % GOAL_COLORS.length], flexShrink: 0 }} />
+                  <input value={g.name} onChange={e => upd(i, "name", e.target.value)} placeholder="Goal Name"
+                    style={{ background: "transparent", border: "none", outline: "none", fontFamily: FM, fontSize: 14, fontWeight: 500, color: C.text, flex: 1, minWidth: 0 }} />
+                </div>
+                <button onClick={() => rem(i)} style={{ background: "transparent", border: "none", color: C.red, cursor: "pointer", fontFamily: FMO, fontSize: 10, flexShrink: 0 }}>REMOVE</button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                <Field label="Target" prefix="$" value={g.amount} onChange={v => upd(i, "amount", v)} />
+                <Field label="Timeline" value={g.years} onChange={v => upd(i, "years", v)} suffix="yrs" />
+                <Field label="Priority" value={g.priority} onChange={v => upd(i, "priority", v)} suffix="pts" />
+              </div>
+            </Card>
+          ))}
+          {sGoals.length > 0 && <Btn secondary onClick={add} full>+ Add Another Goal</Btn>}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <Card>
+            <div style={{ fontSize: 10, fontFamily: FMO, color: C.gold, marginBottom: 10 }}>HOW IT WORKS</div>
+            <div style={{ fontSize: 11, fontFamily: FM, color: C.dim, lineHeight: 1.7 }}>40% of your surplus is split across goals by Priority Weight.</div>
+            <Rule />
+            <Metric small label="Monthly for Goals" value={fmt$(avail)} color={C.gold} />
+          </Card>
+          {sGoals.length > 1 && (
+            <Card>
+              <div style={{ fontSize: 10, fontFamily: FMO, color: C.gold, marginBottom: 10 }}>ALLOCATION</div>
+              {sGoals.map((g, i) => {
+                const share = totPri > 0 ? ((Number(g.priority) || 1) / totPri) * 100 : 0;
+                const monthly = avail * ((Number(g.priority) || 1) / totPri);
+                return <ProgBar key={i} label={g.name || `Goal ${i + 1}`} pct={share} color={GOAL_COLORS[i % GOAL_COLORS.length]} sub={fmt$(monthly) + "/mo"} />;
+              })}
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Tax Optimizer ─────────────────────────────────────────────────────
+function TaxOptimizerStep(p) {
+  const { calc, mob } = p;
+  const hsaRecurring = p.hsaRecurring;
+  const setHsaRecurring = p.setHsaRecurring;
+  const rothRecurring = p.rothRecurring;
+  const setRothRecurring = p.setRothRecurring;
+  const rothCatchup = p.rothCatchup;
+  const setRothCatchup = p.setRothCatchup;
+
+  const RecurringToggle = ({ value, onChange, color }) => (
+    <div style={{ display: "flex", gap: 4 }}>
+      {["recurring", "onetime"].map(v => (
+        <div key={v} onClick={() => onChange(v)} style={{
+          padding: "3px 9px", borderRadius: 12, fontSize: 9, fontFamily: FMO, cursor: "pointer",
+          background: value === v ? color : "transparent",
+          color: value === v ? C.bg : C.dim,
+          border: `1px solid ${value === v ? color : C.border}`,
+          transition: "all 0.2s",
+        }}>{v === "recurring" ? "RECURRING" : "ONE-TIME"}</div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div>
+      <h2 style={{ fontFamily: FD, fontSize: mob ? 20 : 24, color: C.text, marginBottom: 6 }}>Tax-Advantaged Optimizer</h2>
+      <p style={{ fontSize: 12, color: C.dim, marginBottom: 18, fontFamily: FM }}>Maximize pre-tax and tax-free account contributions to reduce your lifetime tax burden.</p>
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 14 }}>
+
+        {/* HSA */}
+        <Card>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ fontSize: 10, fontFamily: FMO, color: C.green }}>HSA — HEALTH SAVINGS ACCOUNT</div>
+            <div style={{ display: "flex", gap: 5 }}>
+              {["yes", "no"].map(v => (
+                <div key={v} onClick={() => p.setHasHSA(v)} style={{ padding: "3px 9px", borderRadius: 12, fontSize: 9, fontFamily: FMO, cursor: "pointer", background: p.hasHSA === v ? C.green : "transparent", color: p.hasHSA === v ? C.bg : C.dim, border: `1px solid ${p.hasHSA === v ? C.green : C.border}` }}>{v.toUpperCase()}</div>
+              ))}
+            </div>
+          </div>
+          {p.hasHSA === "yes" && <>
+            <Sel label="Plan Type" value={p.hsaType} onChange={p.setHsaType} options={[
+              { value: "individual", label: "Individual (limit: $4,300)" },
+              { value: "family", label: "Family (limit: $8,550)" },
+            ]} />
+            <div style={{ marginBottom: 13 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                <Lbl>Annual Contribution</Lbl>
+                <RecurringToggle value={hsaRecurring} onChange={setHsaRecurring} color={C.green} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", background: "#080a0d", border: `1px solid ${C.border}`, borderRadius: 8, padding: "0 10px" }}>
+                <span style={{ color: C.gold, fontFamily: FMO, fontSize: 13, marginRight: 4 }}>$</span>
+                <input type="number" value={p.hsaContrib}
+                  onChange={e => p.setHsaContrib(e.target.value === "" ? "" : Number(e.target.value))}
+                  placeholder="0"
+                  style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: C.text, fontFamily: FMO, fontSize: 14, padding: "10px 0" }} />              </div>
+              <div style={{ fontSize: 10, fontFamily: FM, color: C.dim, marginTop: 4 }}>
+                {hsaRecurring === "recurring"
+                  ? `Recurring annually — tax savings projected over ${calc.yrs} year${calc.yrs !== 1 ? "s" : ""} to retirement.`
+                  : "One-time contribution — single-year tax savings only."}
+              </div>
+            </div>
+            <Rule />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <Metric small label="2026 Limit" value={fmt$(calc.hsaLimit)} color={C.dim} />
+              <Metric small label="Remaining Room" value={fmt$(calc.hsaRem)} color={calc.hsaRem > 0 ? C.green : C.dim} />
+            </div>
+            <div style={{ marginTop: 10, padding: "10px 12px", background: `${C.green}12`, border: `1px solid ${C.green}30`, borderRadius: 8 }}>
+              <div style={{ fontSize: 9, fontFamily: FMO, color: C.green, marginBottom: 2 }}>
+                {hsaRecurring === "recurring" ? "CUMULATIVE TAX SAVINGS TO RETIREMENT" : "SINGLE-YEAR TAX SAVINGS"}
+              </div>
+              <div style={{ fontSize: 20, fontFamily: FD, color: C.green, fontWeight: 700 }}>{fmtFull(calc.hsaTaxSav)}</div>
+              <div style={{ fontSize: 10, fontFamily: FM, color: C.dim, marginTop: 2 }}>
+                {hsaRecurring === "recurring"
+                  ? `${fmt$(calc.hsaRem)}/yr × ${calc.yrs} yrs at ${calc.taxRate}% rate`
+                  : `${fmt$(calc.hsaRem)} at ${calc.taxRate}% rate`}
+              </div>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11, fontFamily: FM, color: C.dim, lineHeight: 1.6 }}>
+              <strong style={{ color: C.text }}>Triple tax advantage:</strong> pre-tax contributions, tax-free growth, tax-free withdrawals for qualified medical expenses.
+            </div>
+          </>}
+          {p.hasHSA === "no" && <div style={{ fontSize: 11, color: C.dim, fontFamily: FM, lineHeight: 1.6 }}>HSA requires a High-Deductible Health Plan (HDHP). Triple tax advantage: pre-tax in, tax-free growth, tax-free out for medical.</div>}
+        </Card>
+
+        {/* Roth IRA */}
+        <Card>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ fontSize: 10, fontFamily: FMO, color: C.purple }}>ROTH IRA — TAX-FREE GROWTH</div>
+            <div style={{ display: "flex", gap: 5 }}>
+              {["yes", "no"].map(v => (
+                <div key={v} onClick={() => p.setHasRoth(v)} style={{ padding: "3px 9px", borderRadius: 12, fontSize: 9, fontFamily: FMO, cursor: "pointer", background: p.hasRoth === v ? C.purple : "transparent", color: p.hasRoth === v ? C.bg : C.dim, border: `1px solid ${p.hasRoth === v ? C.purple : C.border}` }}>{v.toUpperCase()}</div>
+              ))}
+            </div>
+          </div>
+          <Sel label="Filing Status" value={p.filingStatus} onChange={p.setFilingStatus} options={[
+            { value: "single", label: "Single" },
+            { value: "mfj", label: "Married Filing Jointly" },
+          ]} />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 13, padding: "8px 12px", background: C.goldSubtle, border: `1px solid ${C.goldDim}`, borderRadius: 8 }}>
+            <div>
+              <div style={{ fontSize: 10, fontFamily: FMO, color: C.gold }}>AGE 50+ CATCH-UP</div>
+              <div style={{ fontSize: 10, fontFamily: FM, color: C.dim, marginTop: 2 }}>+$1,100/yr → $8,600 total limit</div>
+            </div>
+            <div style={{ display: "flex", gap: 5 }}>
+              {["yes", "no"].map(v => (
+                <div key={v} onClick={() => setRothCatchup(v)} style={{ padding: "3px 9px", borderRadius: 12, fontSize: 9, fontFamily: FMO, cursor: "pointer", background: rothCatchup === v ? C.gold : "transparent", color: rothCatchup === v ? C.bg : C.dim, border: `1px solid ${rothCatchup === v ? C.gold : C.border}` }}>{v.toUpperCase()}</div>
+              ))}
+            </div>
+          </div>
+          {p.hasRoth === "yes" && <>
+            <div style={{ marginBottom: 13 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
+                <Lbl>Annual Contribution</Lbl>
+                <RecurringToggle value={rothRecurring} onChange={setRothRecurring} color={C.purple} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", background: "#080a0d", border: `1px solid ${C.border}`, borderRadius: 8, padding: "0 10px", opacity: !calc.rothElig ? 0.5 : 1 }}>
+                <span style={{ color: C.gold, fontFamily: FMO, fontSize: 13, marginRight: 4 }}>$</span>
+                <input type="number" value={p.rothContrib} disabled={!calc.rothElig}
+                  onChange={e => p.setRothContrib(e.target.value === "" ? "" : Number(e.target.value))}
+                  placeholder={calc.rothElig ? "0" : "Income too high"}
+                  style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: C.text, fontFamily: FMO, fontSize: 14, padding: "10px 0" }} />              </div>
+              <div style={{ fontSize: 10, fontFamily: FM, color: C.dim, marginTop: 4 }}>
+                {rothRecurring === "recurring"
+                  ? "Recurring annually — projected as annuity over 30 years."
+                  : "One-time contribution — single lump sum compounded over 30 years."}
+              </div>
+            </div>
+            <Rule />
+            {calc.rothElig ? (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <Metric small label={`2026 Max${rothCatchup === "yes" ? " (w/ catch-up)" : ""}`} value={fmtFull(calc.rothMax)} color={C.dim} />
+                  <Metric small label="Remaining Room" value={fmtFull(calc.rothRem)} color={calc.rothRem > 0 ? C.purple : C.dim} />
+                </div>
+                <div style={{ marginTop: 10, padding: "10px 12px", background: `${C.purple}12`, border: `1px solid ${C.purple}30`, borderRadius: 8 }}>
+                  <div style={{ fontSize: 9, fontFamily: FMO, color: C.purple, marginBottom: 2 }}>
+                    {rothRecurring === "recurring" ? "30-YR ANNUITY GROWTH (TAX-FREE)" : "30-YR LUMP SUM GROWTH (TAX-FREE)"}
+                  </div>
+                  <div style={{ fontSize: 20, fontFamily: FD, color: C.purple, fontWeight: 700 }}>{fmt$(calc.rothF30)}</div>
+                  <div style={{ fontSize: 10, fontFamily: FM, color: C.dim, marginTop: 2 }}>
+                    {rothRecurring === "recurring"
+                      ? `${fmt$(calc.rothRem)}/yr annually at ${p.expRet || 7}%`
+                      : `${fmt$(calc.rothRem)} today at ${p.expRet || 7}%`}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={{ padding: "11px", background: `${C.orange}12`, border: `1px solid ${C.orange}30`, borderRadius: 8 }}>
+                <div style={{ fontSize: 10, fontFamily: FMO, color: C.orange, marginBottom: 4 }}>INCOME ABOVE PHASE-OUT</div>
+                <div style={{ fontSize: 11, fontFamily: FM, color: C.dim, lineHeight: 1.6 }}>Consider a <strong style={{ color: C.text }}>Backdoor Roth IRA</strong>: contribute to a Traditional IRA then convert. Consult a tax advisor.</div>
+              </div>
+            )}
+          </>}
+          {p.hasRoth === "no" && <div style={{ fontSize: 11, color: C.dim, fontFamily: FM, lineHeight: 1.6 }}>Roth IRA contributions grow tax-free. Withdrawals in retirement are tax-free — especially powerful if you expect a higher tax bracket later.</div>}
+        </Card>
+      </div>
+
+      <Card style={{ marginTop: 14 }}>
+        <div style={{ fontSize: 10, fontFamily: FMO, color: C.gold, marginBottom: 10 }}>TAX OPPORTUNITY SUMMARY</div>
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 8 }}>
+          <Metric small label="HSA Room" value={fmt$(p.hasHSA === "yes" ? calc.hsaRem : 0)} color={C.green} />
+          <Metric small label="Roth Room" value={fmt$(p.hasRoth === "yes" && calc.rothElig ? calc.rothRem : 0)} color={C.purple} />
+          <Metric small label={hsaRecurring === "recurring" ? "HSA Savings (Total)" : "HSA Savings (1yr)"} value={fmt$(p.hasHSA === "yes" ? calc.hsaTaxSav : 0)} color={C.gold} />
+          <Metric small label={rothRecurring === "recurring" ? "Roth 30yr (Annuity)" : "Roth 30yr (Lump Sum)"} value={fmt$(p.hasRoth === "yes" && calc.rothElig ? calc.rothF30 : 0)} color={C.purple} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ── Results ───────────────────────────────────────────────────────────
+function Results(p) {
+  const { calc, debtStrat, wiSavBoost, setWiSavBoost, wiRetBoost, setWiRetBoost, mob } = p;
+  const scoreColor = calc.score >= 75 ? C.green : calc.score >= 50 ? C.gold : C.red;
+  const budgetData = [
+    { name: "Needs", value: Math.round(calc.needs), color: C.green },
+    { name: "Wants", value: Math.round(calc.wants), color: C.orange },
+    { name: "Savings", value: Math.round(Math.max(0, calc.surplus)), color: C.gold },
+  ];
+
+  return (
+    <div>
+      <div style={{ textAlign: "center", marginBottom: 22 }}>
+        <h1 style={{ fontFamily: FD, fontSize: mob ? 24 : 30, fontWeight: 700, color: C.text, margin: 0 }}>
+          Your Financial <span style={{ color: C.gold }}>Blueprint</span>
+        </h1>
+        <p style={{ fontFamily: FM, color: C.dim, fontSize: 12, marginTop: 5 }}>Personalized plan with tax-correct account projections</p>
+      </div>
+
+      {/* Row 1 */}
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1.6fr 1fr", gap: 13, marginBottom: 13 }}>
+        <Card>
+          <Lbl>Financial Health Score</Lbl>
+          <div style={{ textAlign: "center", margin: "10px 0" }}>
+            <div style={{ fontSize: 50, fontFamily: FD, fontWeight: 700, color: scoreColor, lineHeight: 1 }}>{Math.round(calc.score)}</div>
+            <div style={{ fontSize: 10, fontFamily: FMO, color: C.dim }}>/100</div>
+          </div>
+          {calc.sf.map(f => (
+            <ProgBar key={f.name} label={`${f.name} ${Math.round(f.score)}/${f.max}`} pct={(f.score / f.max) * 100}
+              color={f.score / f.max >= 0.8 ? C.green : f.score / f.max >= 0.5 ? C.gold : C.red} />
+          ))}
+        </Card>
+        <Card>
+          <Lbl>50 / 30 / 20 Budget</Lbl>
+          <div style={{ display: "flex", alignItems: "center", gap: mob ? 10 : 18, marginTop: 8 }}>
+            <ResponsiveContainer width={mob ? 90 : 120} height={120}>
+              <PieChart>
+                <Pie data={budgetData} cx="50%" cy="50%" innerRadius={30} outerRadius={54} paddingAngle={3} dataKey="value" stroke="none">
+                  {budgetData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                </Pie>
+                <Tooltip formatter={v => fmtFull(v)} contentStyle={TT_STYLE} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div style={{ flex: 1 }}>
+              {budgetData.map(d => (
+                <div key={d.name} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ width: 7, height: 7, borderRadius: 2, background: d.color }} />
+                    <span style={{ fontSize: 12, fontFamily: FM }}>{d.name}</span>
+                  </div>
+                  <div>
+                    <span style={{ fontFamily: FMO, fontSize: 12 }}>{fmtFull(d.value)}</span>
+                    <span style={{ fontFamily: FMO, fontSize: 9, color: C.dim, marginLeft: 5 }}>{calc.net > 0 ? `${((d.value / calc.net) * 100).toFixed(0)}%` : "—"}</span>
+                  </div>
+                </div>
+              ))}
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
+                <span style={{ fontFamily: FMO, fontSize: 10, color: C.gold }}>NET INCOME</span>
+                <span style={{ fontFamily: FMO, fontSize: 12, color: C.gold, fontWeight: 600 }}>{fmtFull(calc.net)}</span>
+              </div>
+            </div>
+          </div>
+        </Card>
+        <Card>
+          <Lbl>Net Worth Snapshot</Lbl>
+          <div style={{ marginTop: 8 }}>
+            <Metric small label="Total Assets" value={fmt$(calc.totalAssets)} color={C.green} />
+            <Metric small label="Total Debt" value={fmt$(calc.totalDebt)} color={C.red} />
+            <Rule />
+            <Metric label="Net Worth" value={fmtFull(calc.netWorth)} color={calc.netWorth >= 0 ? C.gold : C.red} />
+          </div>
+        </Card>
+      </div>
+
+      {/* Benchmarks */}
+      {calc.benchmarks.length > 0 && (
+        <Card style={{ marginBottom: 13 }}>
+          <Lbl>Benchmark Callouts</Lbl>
+          <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 6, marginTop: 10 }}>
+            {calc.benchmarks.map((b, i) => <Bench key={i} {...b} />)}
+          </div>
+        </Card>
+      )}
+
+      {/* Emergency + Debt */}
+      <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "1fr 1fr", gap: 13, marginBottom: 13 }}>
+        <Card>
+          <Lbl>Emergency Fund</Lbl>
+          <div style={{ height: 9, background: C.goldSubtle, borderRadius: 5, overflow: "hidden", margin: "10px 0" }}>
+            <div style={{ height: "100%", width: `${Math.min(calc.eProg, 100)}%`, background: `linear-gradient(90deg,${C.gold},${C.green})`, borderRadius: 5, transition: "width 1s" }} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+            <Metric small label="Progress" value={`${calc.eProg.toFixed(0)}%`} color={calc.eProg >= 100 ? C.green : C.gold} />
+            <Metric small label="Target" value={fmt$(calc.eFund)} color={C.dim} />
+            <Metric small label="Monthly" value={fmt$(Math.max(0, calc.surplus) * 0.3)} color={C.green} />
+          </div>
+        </Card>
+        <Card>
+          <Lbl>Debt Payoff — {debtStrat === "avalanche" ? "Avalanche" : "Snowball"}</Lbl>
+          {calc.totalDebt === 0 ? (
+            <div style={{ textAlign: "center", padding: 18 }}><div style={{ fontSize: 28, marginBottom: 5 }}>✓</div><div style={{ fontFamily: FD, fontSize: 15, color: C.green }}>Debt Free</div></div>
+          ) : (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, margin: "10px 0" }}>
+                <Metric small label="Total" value={fmt$(calc.totalDebt)} color={C.red} />
+                <Metric small label="Extra/mo" value={fmt$(calc.extraDebt)} color={C.gold} />
+                <Metric small label="Payoff" value={`${calc.payoffMo}mo`} color={calc.payoffMo <= 36 ? C.green : calc.payoffMo <= 60 ? C.gold : C.red} />
+              </div>
+              {calc.sorted.map((d, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${C.border}` }}>
+                  <span style={{ fontSize: 12, fontFamily: FM }}>{d.name || `Debt ${i + 1}`} <span style={{ color: C.dim, fontSize: 10 }}>{d.rate}%</span></span>
+                  <span style={{ fontFamily: FMO, fontSize: 12, color: C.red }}>{fmtFull(d.balance)}</span>
+                </div>
+              ))}
+            </>
+          )}
+        </Card>
+      </div>
+
+      {/* Per-Account Growth */}
+      <Card style={{ marginBottom: 13 }}>
+        <div style={{ marginBottom: 12 }}>
+          <Lbl>Investment Account Projections — Tax-Correct Growth to Retirement</Lbl>
+          <div style={{ fontSize: 10, fontFamily: FM, color: C.dim, marginTop: 3 }}>
+            401k/Trad IRA: full {p.expRet || 7}% (deferred) · Roth: full {p.expRet || 7}% (tax-free) · Brokerage: {((Number(p.expRet) || 7) - calc.brokerageDrag).toFixed(2)}% (after {calc.brokerageDrag.toFixed(2)}% LTCG drag) · HYSA: {calc.hysaEffective.toFixed(2)}% (after income tax)
+          </div>
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
+          <AreaChart data={calc.acctProj} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+            <defs>
+              {[["k401", C.gold], ["trad", C.orange], ["roth", C.purple], ["brok", C.blue], ["hysa", C.green]].map(([id, col]) => (
+                <linearGradient key={id} id={`ag${id}`} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={col} stopOpacity={0.25} />
+                  <stop offset="95%" stopColor={col} stopOpacity={0} />
+                </linearGradient>
+              ))}
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+            <XAxis dataKey="year" tick={{ fill: C.dim, fontSize: 9, fontFamily: FMO }} stroke={C.border} />
+            <YAxis tick={{ fill: C.dim, fontSize: 9, fontFamily: FMO }} stroke={C.border} tickFormatter={v => fmt$(v)} />
+            <Tooltip contentStyle={TT_STYLE} formatter={v => fmtFull(v)} />
+            <Legend wrapperStyle={{ fontSize: 10, fontFamily: FMO }} />
+            <Area type="monotone" dataKey="401k" name="401k" stroke={C.gold} fill="url(#agk401)" strokeWidth={2} dot={false} />
+            <Area type="monotone" dataKey="Trad IRA" name="Trad IRA" stroke={C.orange} fill="url(#agtrad)" strokeWidth={2} dot={false} />
+            <Area type="monotone" dataKey="Roth IRA" name="Roth IRA" stroke={C.purple} fill="url(#agroth)" strokeWidth={2} dot={false} />
+            <Area type="monotone" dataKey="Brokerage" name="Brokerage" stroke={C.blue} fill="url(#agbrok)" strokeWidth={2} dot={false} />
+            <Area type="monotone" dataKey="HYSA" name="HYSA" stroke={C.green} fill="url(#aghysa)" strokeWidth={2} dot={false} />
+          </AreaChart>
+        </ResponsiveContainer>
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(5,1fr)", gap: 8, marginTop: 10 }}>
+          <Metric small label="401k at Ret." value={fmt$(calc.retFinal401k)} color={C.gold} />
+          <Metric small label="Trad IRA at Ret." value={fmt$(calc.retFinalTrad)} color={C.orange} />
+          <Metric small label="Roth IRA at Ret." value={fmt$(calc.retFinalRoth)} color={C.purple} />
+          <Metric small label="Brokerage at Ret." value={fmt$(calc.retFinalBrok)} color={C.blue} />
+          <Metric small label="Total Portfolio" value={fmt$(calc.retFinalTotal)} color={C.text} />
+        </div>
+      </Card>
+
+      {/* Withdrawal Sequencing */}
+      <Card style={{ marginBottom: 13 }}>
+        <Lbl>Optimal Withdrawal Sequencing</Lbl>
+        <p style={{ fontSize: 11, fontFamily: FM, color: C.dim, margin: "6px 0 14px", lineHeight: 1.6 }}>
+          The order you draw down accounts in retirement has a significant impact on lifetime taxes and portfolio longevity.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : "repeat(3,1fr)", gap: 12 }}>
+          {calc.seqAccts.map((a, i) => (
+            <div key={i} style={{ padding: "14px 16px", background: `${a.color}10`, border: `1px solid ${a.color}35`, borderRadius: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 18 }}>{a.icon}</span>
+                <span style={{ fontFamily: FMO, fontSize: 11, color: a.color, fontWeight: 600 }}>{a.label}</span>
+              </div>
+              <div style={{ fontSize: 11, fontFamily: FM, color: C.dim, lineHeight: 1.6 }}>{a.note}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 12, padding: "10px 14px", background: C.goldSubtle, border: `1px solid ${C.goldDim}`, borderRadius: 8 }}>
+          <span style={{ fontSize: 11, fontFamily: FM, color: C.dim, lineHeight: 1.6 }}>
+            <strong style={{ color: C.gold }}>RMD Note:</strong> Traditional 401k and IRA accounts require minimum distributions starting at age 73. Roth IRAs have no RMDs, making them ideal to pass to heirs or spend last.
+          </span>
+        </div>
+      </Card>
+
+      {/* Net Worth 30yr */}
+      <Card style={{ marginBottom: 13 }}>
+        <div style={{ display: "flex", flexDirection: mob ? "column" : "row", alignItems: mob ? "flex-start" : "center", justifyContent: "space-between", marginBottom: 12, gap: 10 }}>
+          <div>
+            <Lbl>30-Year Net Worth Projection</Lbl>
+            <div style={{ fontSize: 10, fontFamily: FM, color: C.dim, marginTop: 2 }}>Base vs. what-if scenario</div>
+          </div>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 9, fontFamily: FMO, color: C.dim, marginBottom: 4 }}>SAVINGS BOOST</div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {[2, 5, 10].map(v => (
+                  <div key={v} onClick={() => setWiSavBoost(v)} style={{ padding: "3px 9px", borderRadius: 7, fontSize: 9, fontFamily: FMO, cursor: "pointer", background: wiSavBoost === v ? C.gold : "transparent", color: wiSavBoost === v ? C.bg : C.dim, border: `1px solid ${wiSavBoost === v ? C.gold : C.border}` }}>+{v}%</div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, fontFamily: FMO, color: C.dim, marginBottom: 4 }}>RETURN BOOST</div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {[0.5, 1, 2].map(v => (
+                  <div key={v} onClick={() => setWiRetBoost(v)} style={{ padding: "3px 9px", borderRadius: 7, fontSize: 9, fontFamily: FMO, cursor: "pointer", background: wiRetBoost === v ? C.blue : "transparent", color: wiRetBoost === v ? C.bg : C.dim, border: `1px solid ${wiRetBoost === v ? C.blue : C.border}` }}>+{v}%</div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        <ResponsiveContainer width="100%" height={200}>
+          <AreaChart data={calc.nwProj} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+            <defs>
+              <linearGradient id="nwB" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={C.gold} stopOpacity={0.25} /><stop offset="95%" stopColor={C.gold} stopOpacity={0} /></linearGradient>
+              <linearGradient id="nwW" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={C.blue} stopOpacity={0.2} /><stop offset="95%" stopColor={C.blue} stopOpacity={0} /></linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+            <XAxis dataKey="year" tick={{ fill: C.dim, fontSize: 9, fontFamily: FMO }} stroke={C.border} />
+            <YAxis tick={{ fill: C.dim, fontSize: 9, fontFamily: FMO }} stroke={C.border} tickFormatter={v => fmt$(v)} />
+            <Tooltip contentStyle={TT_STYLE} formatter={v => fmtFull(v)} />
+            <Legend wrapperStyle={{ fontSize: 10, fontFamily: FMO }} />
+            <Area type="monotone" dataKey="base" name="Base Plan" stroke={C.gold} fill="url(#nwB)" strokeWidth={2} dot={false} />
+            <Area type="monotone" dataKey="whatif" name={`What-If (+${wiSavBoost}% sav, +${wiRetBoost}% ret)`} stroke={C.blue} fill="url(#nwW)" strokeWidth={2} dot={false} strokeDasharray="5 3" />
+          </AreaChart>
+        </ResponsiveContainer>
+        <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr 1fr" : "repeat(4,1fr)", gap: 8, marginTop: 10 }}>
+          <Metric small label="Base — 10yr" value={fmt$(calc.nwProj[10]?.base)} color={C.gold} />
+          <Metric small label="Base — 30yr" value={fmt$(calc.nwProj[30]?.base)} color={C.gold} />
+          <Metric small label="What-If — 10yr" value={fmt$(calc.nwProj[10]?.whatif)} color={C.blue} />
+          <Metric small label="What-If — 30yr" value={fmt$(calc.nwProj[30]?.whatif)} color={C.blue} />
+        </div>
+      </Card>
+
+      {/* Savings Goals */}
+      {calc.goalProj.length > 0 ? (
+        <div style={{ marginBottom: 13 }}>
+          <Lbl>Savings Goal Projections</Lbl>
+          <div style={{ display: "grid", gridTemplateColumns: mob ? "1fr" : calc.goalProj.length === 1 ? "1fr" : "1fr 1fr", gap: 13, marginTop: 10 }}>
+            {calc.goalProj.map((g, i) => (
+              <Card key={i}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 9 }}>
+                  <div style={{ width: 7, height: 7, borderRadius: "50%", background: g.color }} />
+                  <span style={{ fontFamily: FD, fontSize: 13, color: C.text }}>{g.name || `Goal ${i + 1}`}</span>
+                  <span style={{ marginLeft: "auto", fontFamily: FMO, fontSize: 9, color: g.reached ? C.green : C.orange }}>
+                    {g.reached ? `✓ ${g.reached}mo` : `>${(Number(g.years) || 5) * 12}mo`}
+                  </span>
+                </div>
+                <ResponsiveContainer width="100%" height={130}>
+                  <AreaChart data={g.pts} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                    <defs>
+                      <linearGradient id={`gg${i}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={g.color} stopOpacity={0.3} /><stop offset="95%" stopColor={g.color} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                    <XAxis dataKey="month" tick={{ fill: C.dim, fontSize: 8, fontFamily: FMO }} stroke={C.border} />
+                    <YAxis tick={{ fill: C.dim, fontSize: 8, fontFamily: FMO }} stroke={C.border} tickFormatter={v => fmt$(v)} />
+                    <Tooltip contentStyle={TT_STYLE} formatter={v => fmtFull(v)} />
+                    <Area type="monotone" dataKey="balance" stroke={g.color} fill={`url(#gg${i})`} strokeWidth={2} dot={false} name="Balance" />
+                    <Line type="monotone" dataKey="target" stroke={C.red} strokeDasharray="4 3" strokeWidth={1} dot={false} name="Target" />
+                  </AreaChart>
+                </ResponsiveContainer>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 8 }}>
+                  <Metric small label="Monthly" value={fmt$(g.alloc)} color={g.color} />
+                  <Metric small label="Target" value={fmt$(g.amount)} color={C.dim} />
+                  <Metric small label="Timeline" value={`${g.years}yr`} color={C.dim} />
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <Card style={{ marginBottom: 13, textAlign: "center", padding: 20 }}>
+          <span style={{ fontFamily: FMO, fontSize: 10, color: C.dim }}>NO SAVINGS GOALS — Go back to add goals and see compound growth projections.</span>
+        </Card>
+      )}
+
+      <div style={{ textAlign: "center", padding: "14px 0", borderTop: `1px solid ${C.border}` }}>
+        <p style={{ fontFamily: FMO, fontSize: 9, color: C.dim, lineHeight: 1.7, maxWidth: 600, margin: "0 auto" }}>
+          For educational purposes only. Tax drag estimates are approximations. Not tax or investment advice. Consult a qualified advisor.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
+// Mount
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(React.createElement(App));
+  </script>
+</body>
+</html>
