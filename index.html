@@ -226,7 +226,7 @@ function App() {
   const [wiSavBoost, setWiSavBoost] = useState(5);
   const [wiRetBoost, setWiRetBoost] = useState(1);
 
-  const nav = (t) => { setAnim(true); setTimeout(() => { setStep(t); setAnim(false); }, 230); };
+  const nav = (t) => { setAnim(true); setTimeout(() => { setStep(t); setAnim(false); window.scrollTo(0, 0); }, 230); };
 
   const calc = useMemo(() => {
     const grossM = ((Number(salary) || 0) + (Number(otherInc) || 0)) / 12;
@@ -327,8 +327,8 @@ function App() {
       return { ...g, alloc, pts, reached, color: GOAL_COLORS[i % GOAL_COLORS.length] };
     });
 
-    // Tax optimizer — 2026 limits (IRS IR-2025-111, Nov 13 2025)
-    const hsaLimit = hsaType === "family" ? 8550 : 4300;
+    // Tax optimizer — 2026 limits (IRS Rev. Proc. 2025-19 for HSA; IR-2025-111 for IRA)
+    const hsaLimit = hsaType === "family" ? 8750 : 4400;
     const catchupAdd = (rothCatchup === "yes") ? 1100 : 0;
     const rothLimit = 7500 + catchupAdd; // 2026: $7,500 base, $8,600 with 50+ catch-up
     const phaseout = filingStatus === "mfj" ? { s: 242000, e: 252000 } : { s: 153000, e: 168000 };
@@ -841,8 +841,8 @@ function TaxOptimizerStep(p) {
           </div>
           {p.hasHSA === "yes" && <>
             <Sel label="Plan Type" value={p.hsaType} onChange={p.setHsaType} options={[
-              { value: "individual", label: "Individual (limit: $4,300)" },
-              { value: "family", label: "Family (limit: $8,550)" },
+              { value: "individual", label: "Individual (limit: $4,400)" },
+              { value: "family", label: "Family (limit: $8,750)" },
             ]} />
             <div style={{ marginBottom: 13 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
@@ -863,8 +863,8 @@ function TaxOptimizerStep(p) {
             </div>
             <Rule />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <Metric small label="2026 Limit" value={fmt$(calc.hsaLimit)} color={C.dim} />
-              <Metric small label="Remaining Room" value={fmt$(calc.hsaRem)} color={calc.hsaRem > 0 ? C.green : C.dim} />
+              <Metric small label="2026 Limit" value={fmtFull(calc.hsaLimit)} color={C.dim} />
+              <Metric small label="Remaining Room" value={fmtFull(calc.hsaRem)} color={calc.hsaRem > 0 ? C.green : C.dim} />
             </div>
             <div style={{ marginTop: 10, padding: "10px 12px", background: `${C.green}12`, border: `1px solid ${C.green}30`, borderRadius: 8 }}>
               <div style={{ fontSize: 9, fontFamily: FMO, color: C.green, marginBottom: 2 }}>
